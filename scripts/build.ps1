@@ -193,11 +193,36 @@ function Install-SingBox {
     Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+<#
+.SYNOPSIS
+    Clears the previous output, and explains the one reason that usually fails.
+.DESCRIPTION
+    Windows will not delete an executable that is running, and the most common thing running
+    from dist\ is the RouteShield you just tested. Killing it here would leave its tunnel and
+    firewall rules behind, so the build stops and asks for a clean quit instead.
+#>
+function Clear-Dist {
+    $exe = Join-Path $Dist 'RouteShield.exe'
+
+    $running = Get-Process -Name RouteShield -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -and $_.Path.StartsWith($Dist, [StringComparison]::OrdinalIgnoreCase) }
+    if ($running) {
+        throw "RouteShield is still running from $Dist. Quit it first (tray icon -> Quit), then run build.cmd again."
+    }
+
+    Remove-Item $Dist -Recurse -Force -ErrorAction SilentlyContinue
+
+    if (Test-Path $exe) {
+        throw "The previous build's RouteShield.exe in $Dist is locked - usually because it is still running, or an antivirus scan is holding it. Quit RouteShield (tray icon -> Quit), wait a moment, and run build.cmd again."
+    }
+
+    New-Item -ItemType Directory -Force -Path $Dist | Out-Null
+}
+
 function Publish-App {
     Step "Publishing RouteShield ($Configuration, $Runtime)"
 
-    Remove-Item $Dist -Recurse -Force -ErrorAction SilentlyContinue
-    New-Item -ItemType Directory -Force -Path $Dist | Out-Null
+    Clear-Dist
 
     $arguments = @(
         'publish', $Project,
