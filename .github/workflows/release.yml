@@ -38,26 +38,34 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            version="${{ inputs.version }}"
+            raw="${{ inputs.version }}"
           else
-            version="${GITHUB_REF_NAME#v}"
+            raw="$GITHUB_REF_NAME"
           fi
 
-          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::'$version' is not a three-part version number."
+          # A leading v is how the tag is written, so accept it either way.
+          version="${raw#v}"
+
+          # Two to four parts, matching what .NET accepts for an assembly version.
+          if ! [[ "$version" =~ ^[0-9]+(\.[0-9]+){1,3}$ ]]; then
+            echo "::error::'$raw' is not a version number like 1.2.3."
             exit 1
           fi
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
 
-      - name: Verify the core configuration builder
-        run: dotnet test tests/RouteShield.Core.Tests/RouteShield.Core.Tests.csproj -c Release
-
       - name: Build the package
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -Runtime win-x64 -Version ${{ steps.version.outputs.version }}
+
+      # Run after the build, against the core the build just downloaded, so the release is
+      # gated on the exact sing-box being shipped accepting every configuration we generate.
+      - name: Verify the configurations against the packaged core
+        env:
+          ROUTESHIELD_SINGBOX: ${{ github.workspace }}\third_party\sing-box\sing-box.exe
+        run: dotnet test tests/RouteShield.Core.Tests/RouteShield.Core.Tests.csproj -c Release
 
       - name: Upload the build artifact
         uses: actions/upload-artifact@v4

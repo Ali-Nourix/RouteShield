@@ -11,10 +11,24 @@ namespace RouteShield.Tests;
 /// </summary>
 public class SingBoxValidationTests
 {
-    private static string? CorePath =>
-        Environment.GetEnvironmentVariable("ROUTESHIELD_SINGBOX") is { Length: > 0 } path && File.Exists(path)
-            ? path
-            : null;
+    /// <summary>
+    /// Null when the variable is unset, so the checks report as skipped. A variable that points
+    /// at nothing throws instead — a misconfigured pipeline must not look like a clean run.
+    /// </summary>
+    private static string? CorePath
+    {
+        get
+        {
+            if (Environment.GetEnvironmentVariable("ROUTESHIELD_SINGBOX") is not { Length: > 0 } path)
+            {
+                return null;
+            }
+
+            return File.Exists(path)
+                ? path
+                : throw new FileNotFoundException($"ROUTESHIELD_SINGBOX points at {path}, which does not exist.", path);
+        }
+    }
 
     public static TheoryData<RouteMode, bool, bool, bool, string> Policies()
     {
