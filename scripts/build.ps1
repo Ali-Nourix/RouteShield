@@ -99,6 +99,18 @@ function Resolve-Dotnet {
     return $private
 }
 
+function Get-ProjectVersion {
+    $declared = ([xml](Get-Content $Project -Raw)).Project.PropertyGroup.Version |
+        Where-Object { $_ } |
+        Select-Object -First 1
+
+    if (-not $declared) {
+        throw "RouteShield.csproj declares no <Version>. Pass -Version to name the package."
+    }
+
+    return [string]$declared
+}
+
 function Get-SingBoxArchiveName {
     $architecture = if ($Runtime -eq 'win-arm64') { 'arm64' } else { 'amd64' }
     return "sing-box-$SingBoxVersion-windows-$architecture.zip"
@@ -228,11 +240,10 @@ function Copy-Core {
 function Compress-Package {
     Step 'Writing the package'
 
-    $resolved = $Version
-    if (-not $resolved) {
-        $resolved = (Get-Item (Join-Path $Dist 'RouteShield.exe')).VersionInfo.ProductVersion
-        $resolved = ($resolved -split '\+')[0]
-    }
+    # The project file is the source of truth. Reading it back off the published binary
+    # depends on the host being able to parse PE version resources, which is not a thing
+    # to rely on for something as load-bearing as the package name.
+    $resolved = if ($Version) { $Version } else { Get-ProjectVersion }
 
     New-Item -ItemType Directory -Force -Path $Artifacts | Out-Null
     $package = Join-Path $Artifacts "RouteShield-$resolved-$Runtime.zip"
