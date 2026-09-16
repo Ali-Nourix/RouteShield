@@ -10,8 +10,15 @@ the tunnel; everything else keeps your own connection.
 
 - **Three routing policies** — route only the applications you select, route everything *except*
   the ones you select, or tunnel the whole system.
-- **Protocols** — VLESS (including Reality), VMess, Trojan, Shadowsocks, WireGuard, and any
-  sing-box JSON configuration. Transports: TCP, WebSocket, gRPC, HTTP/2, HTTPUpgrade, QUIC.
+- **Protocols** — VLESS (including Reality), VMess, Trojan, Shadowsocks, Hysteria2, TUIC,
+  AnyTLS, WireGuard, and any sing-box JSON configuration. Transports: TCP, WebSocket, gRPC,
+  HTTP/2, HTTPUpgrade, QUIC. Links that name no fingerprint imitate Chrome's TLS client hello.
+- **Automatic selection** — every subscription gets a *Fastest of …* entry. The core measures
+  all of its nodes, carries traffic over the fastest, re-tests every three minutes and fails
+  over on its own when the chosen node dies, without dropping the tunnel.
+- **Anti-DPI handshakes** — optionally fragment every TLS handshake with the proxy server
+  across several packets and TLS records, for networks that read the server name from the
+  first packet.
 - **Subscriptions** — HTTPS subscription URLs, plain or Base64, refreshed on demand and
   de-duplicated. URLs are sealed with DPAPI before they touch disk.
 - **Application kill switch** — while the tunnel is up, the routed executables are blocked from
@@ -23,7 +30,11 @@ the tunnel; everything else keeps your own connection.
 - **Latency test** — one throwaway core times a request through every profile; sort the
   library by the result.
 - **Browser extension** — a route per tab in Firefox, per site in Chrome: any pinned profile,
-  or no VPN at all, while the rest of the browser follows the routing policy.
+  or no VPN at all, while the rest of the browser follows the routing policy. A site's video,
+  images and scripts follow it, and a tab assigned to a profile never falls back to the open
+  connection.
+- **Light and dark** — the whole interface follows the Windows app colour, or is pinned to
+  either palette, and switches in place.
 - **Live telemetry** — uptime, HTTP latency measured through the tunnel, throughput read from the
   core, and the exit address the outside world sees.
 - **Diagnostics** — a filterable event log and an export bundle that never carries a secret.
@@ -56,7 +67,7 @@ Options pass straight through:
 
 ```cmd
 build.cmd -Runtime win-arm64
-build.cmd -Version 1.2.0
+build.cmd -Version 1.3.0
 ```
 
 ## Layout
@@ -92,13 +103,27 @@ profile, every profile you pinned in *Profiles*, and a bypass that leaves throug
 connection — and describes them on `http://127.0.0.1:47831/v1/state`. The add-ons in
 `extension/` read that list and point a tab (Firefox, via `proxy.onRequest`) or a site
 (Chrome, via a generated PAC script — Chrome has no per-tab proxy) at the proxy you choose.
-Both are packaged with every release; see [extension/README.md](extension/README.md) for
+
+On Chrome an assigned site carries the domains it loads its content from — YouTube's video
+comes from `googlevideo.com`, not `youtube.com` — starting from a built-in list and learning
+the rest by watching the tab. On either browser a tab or site assigned to a profile fails
+closed: while the tunnel is down its requests are held rather than sent unprotected.
+
+Both add-ons are packaged with every release — Firefox as an `.xpi`, Chrome as a `.zip` — and
+also sit in the app's `extensions` folder; see [extension/README.md](extension/README.md) for
 installation.
 
 ## How the tunnel is put together
 
 RouteShield builds one sing-box configuration per connection:
 
+- The **proxy** is one node, or — for a *Fastest of …* entry — a `urltest` group holding every
+  node of the subscription. The group tests each member against `generate_204` every three
+  minutes, uses the fastest, and switches when the chosen one fails or a member is faster by a
+  clear margin; existing connections are left alone.
+- With *Fragment TLS handshakes* on, every TCP-based node gets `tls.fragment` and
+  `tls.record_fragment`; QUIC-based nodes (Hysteria2, TUIC) are left alone. Nodes without a
+  declared fingerprint get uTLS with Chrome's profile on TCP, WebSocket and HTTPUpgrade.
 - A **TUN inbound** with `auto_route` and `strict_route` captures traffic, and route rules decide
   per process whether it leaves through `proxy` or `direct`. Executables are matched with a
   case-insensitive regex, because Windows hands back the same program with different casing
@@ -115,7 +140,9 @@ RouteShield builds one sing-box configuration per connection:
   restart.
 - A loopback **mixed inbound** carries the latency and exit-address probe, the **bridge
   inbounds** carry the browser extension's routes, and the **Clash API** on another loopback
-  port reports throughput. All ports are reserved at start, with a fresh API token each run.
+  port reports throughput and which node a group is using. All ports are reserved at start,
+  with a fresh API token each run; bridge ports are asked for again on a reconnect so a
+  browser's resolved route stays valid.
 - The **latency test** starts a second, inbound-less core with every profile as a node and asks
   its Clash API to time `https://www.gstatic.com/generate_204` through each one.
 

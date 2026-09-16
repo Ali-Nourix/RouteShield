@@ -285,6 +285,116 @@ public class RuntimeConfigBuilderTests
     }
 
     [Fact]
+    public void An_automatic_group_wraps_every_node_in_a_urltest_outbound()
+    {
+        var runtime = RuntimeConfigBuilder.Build(Fixtures.AutomaticGroup(), Fixtures.Settings(), Fixtures.Apps, [], FixedPorts);
+        var root = JsonNode.Parse(runtime.Json)!.AsObject();
+
+        var group = root["outbounds"]!.AsArray().OfType<JsonObject>()
+            .Single(node => node["tag"]!.GetValue<string>() == RuntimeConfigBuilder.ProxyTag);
+
+        Assert.Equal("urltest", group["type"]!.GetValue<string>());
+        Assert.Equal(["auto-0", "auto-1", "auto-2"], group["outbounds"]!.AsArray().Select(tag => tag!.GetValue<string>()));
+        Assert.Equal(RuntimeConfigBuilder.GroupTestUrl, group["url"]!.GetValue<string>());
+        Assert.False(group["interrupt_exist_connections"]!.GetValue<bool>());
+
+        // Every member is placed where its type belongs and resolves its server locally.
+        var members = root["outbounds"]!.AsArray().Concat(root["endpoints"]!.AsArray()).OfType<JsonObject>()
+            .Where(node => node["tag"]!.GetValue<string>().StartsWith("auto-", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.Equal(3, members.Count);
+        Assert.All(members, node => Assert.Equal(RuntimeConfigBuilder.LocalResolverTag, node["domain_resolver"]!.GetValue<string>()));
+        Assert.Equal("wireguard", root["endpoints"]!.AsArray().Single()!["type"]!.GetValue<string>());
+
+        // The app can name the node the core chose.
+        Assert.True(runtime.IsAutomatic);
+        Assert.Equal("Tokyo relay", runtime.MemberName("auto-1"));
+        Assert.Equal("auto-9", runtime.MemberName("auto-9"));
+    }
+
+    [Fact]
+    public void A_single_node_is_not_wrapped()
+    {
+        var runtime = RuntimeConfigBuilder.Build(
+            ConnectionTarget.Single(TunnelParser.Parse(Fixtures.Trojan)), Fixtures.Settings(), Fixtures.Apps, [], FixedPorts);
+        var root = JsonNode.Parse(runtime.Json)!.AsObject();
+
+        Assert.False(runtime.IsAutomatic);
+        Assert.DoesNotContain(root["outbounds"]!.AsArray().OfType<JsonObject>(), node => node["type"]!.GetValue<string>() == "urltest");
+    }
+
+    [Fact]
+    public void Tls_fragmenting_splits_tcp_handshakes_but_leaves_quic_alone()
+    {
+        var target = ConnectionTarget.Automatic(
+            "Mixed",
+            [
+                ("Reality", TunnelParser.Parse(Fixtures.VlessReality)),
+                ("Hysteria", TunnelParser.Parse(Fixtures.Hysteria2)),
+                ("Shadow", TunnelParser.Parse(Fixtures.Shadowsocks))
+            ]);
+
+        var runtime = RuntimeConfigBuilder.Build(target, Fixtures.Settings(tlsFragment: true), Fixtures.Apps, [], FixedPorts);
+        var outbounds = JsonNode.Parse(runtime.Json)!["outbounds"]!.AsArray().OfType<JsonObject>()
+            .ToDictionary(node => node["tag"]!.GetValue<string>());
+
+        Assert.True(outbounds["auto-0"]["tls"]!["fragment"]!.GetValue<bool>());
+        Assert.True(outbounds["auto-0"]["tls"]!["record_fragment"]!.GetValue<bool>());
+        Assert.Null(outbounds["auto-1"]["tls"]!["fragment"]);
+        Assert.Null(outbounds["auto-2"]["tls"]);
+    }
+
+    [Fact]
+    public void Tls_fragmenting_is_off_unless_asked()
+    {
+        var proxy = Build(Fixtures.Settings())["outbounds"]!.AsArray().OfType<JsonObject>()
+            .Single(node => node["tag"]!.GetValue<string>() == RuntimeConfigBuilder.ProxyTag);
+
+        Assert.Null(proxy["tls"]!["fragment"]);
+    }
+
+    [Fact]
+    public void Preferred_ports_are_honoured_when_free()
+    {
+        var first = RuntimeConfigBuilder.ReserveLoopbackPorts(3);
+        var again = RuntimeConfigBuilder.ReserveLoopbackPorts([first[0], null, first[2]]);
+
+        Assert.Equal(first[0], again[0]);
+        Assert.Equal(first[2], again[2]);
+        Assert.Equal(3, again.Distinct().Count());
+    }
+
+    [Fact]
+    public void A_taken_preferred_port_falls_back_to_a_free_one()
+    {
+        var blocker = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        blocker.Start();
+        try
+        {
+            var taken = ((System.Net.IPEndPoint)blocker.LocalEndpoint).Port;
+            var ports = RuntimeConfigBuilder.ReserveLoopbackPorts([taken, 70000]);
+
+            Assert.NotEqual(taken, ports[0]);
+            Assert.All(ports, port => Assert.InRange(port, 1, 65535));
+        }
+        finally
+        {
+            blocker.Stop();
+        }
+    }
+
+    [Fact]
+    public void A_port_plan_keeps_last_run_bridge_ports()
+    {
+        var previous = PortPlan.Reserve(2);
+        var next = PortPlan.Reserve(2, previous.BridgePorts.Select(port => (int?)port).ToArray());
+
+        Assert.Equal(previous.BridgePorts, next.BridgePorts);
+        Assert.NotEqual(previous.ControlSecret, next.ControlSecret);
+    }
+
+    [Fact]
     public void Reserved_ports_are_distinct()
     {
         var ports = RuntimeConfigBuilder.ReserveLoopbackPorts(6);

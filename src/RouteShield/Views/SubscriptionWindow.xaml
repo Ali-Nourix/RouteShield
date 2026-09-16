@@ -6,13 +6,13 @@
         SizeToContent="Height" Width="560"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        FontFamily="{StaticResource BodyFont}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource BodyFont}" Foreground="{DynamicResource TextBrush}"
         UseLayoutRounding="True">
 
-    <Border Background="{StaticResource BgBrush}" CornerRadius="{StaticResource RadiusLg}" Padding="28,26"
-            Effect="{StaticResource ShadowLg}" Margin="24" MouseLeftButtonDown="OnDragWindow">
+    <Border Background="{DynamicResource BgBrush}" CornerRadius="{StaticResource RadiusLg}" Padding="28,26"
+            Effect="{DynamicResource ShadowLg}" Margin="24" MouseLeftButtonDown="OnDragWindow">
         <StackPanel>
-            <TextBlock Style="{StaticResource Kicker}" Foreground="{StaticResource AccentBrush}"
+            <TextBlock Style="{StaticResource Kicker}" Foreground="{DynamicResource AccentBrush}"
                        ui:Typo.Tracked="SUBSCRIPTION" />
             <TextBlock x:Name="TitleText" Margin="0,12,0,0" FontFamily="{StaticResource HeadingFont}" FontSize="26"
                        Text="Add a subscription" />
@@ -26,7 +26,7 @@
             <TextBox x:Name="UrlBox" Style="{StaticResource AppTextBox}" Tag="https://sub.example.net/link/…"
                      TextChanged="OnUrlChanged" />
             <TextBlock x:Name="UrlHint" Style="{StaticResource Caption}" Margin="0,6,0,0"
-                       Foreground="{StaticResource Accent700Brush}" Visibility="Collapsed"
+                       Foreground="{DynamicResource AccentTextBrush}" Visibility="Collapsed"
                        Text="The address has to start with https://" />
 
             <Grid Margin="0,22,0,0">

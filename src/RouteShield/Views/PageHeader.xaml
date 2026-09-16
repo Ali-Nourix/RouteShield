@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="clr-namespace:RouteShield.Ui"
              x:Name="Header" Focusable="False">
-    <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,14">
+    <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,14">
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />

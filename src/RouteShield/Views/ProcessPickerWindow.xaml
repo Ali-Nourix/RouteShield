@@ -6,11 +6,11 @@
         Width="640" Height="560" MinWidth="520" MinHeight="420"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        FontFamily="{StaticResource BodyFont}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource BodyFont}" Foreground="{DynamicResource TextBrush}"
         UseLayoutRounding="True">
 
-    <Border Background="{StaticResource BgBrush}" CornerRadius="{StaticResource RadiusLg}" Margin="18"
-            Effect="{StaticResource ShadowLg}">
+    <Border Background="{DynamicResource BgBrush}" CornerRadius="{StaticResource RadiusLg}" Margin="18"
+            Effect="{DynamicResource ShadowLg}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -20,7 +20,7 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2" Padding="20,14"
+            <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2" Padding="20,14"
                     MouseLeftButtonDown="OnDragWindow">
                 <Grid>
                     <TextBlock FontFamily="{StaticResource HeadingFont}" FontSize="12" VerticalAlignment="Center"
@@ -66,7 +66,7 @@
                             </Grid.ColumnDefinitions>
 
                             <Border Width="9" Height="9" CornerRadius="2" Margin="10,0,0,0" HorizontalAlignment="Left"
-                                    VerticalAlignment="Center" Background="{StaticResource AccentBrush}" />
+                                    VerticalAlignment="Center" Background="{DynamicResource AccentBrush}" />
                             <StackPanel Grid.Column="1">
                                 <TextBlock Style="{StaticResource RowLabel}" TextTrimming="CharacterEllipsis"
                                            Text="{Binding Name}" />
@@ -82,7 +82,7 @@
                 </ListBox.ItemTemplate>
             </ListBox>
 
-            <Border Grid.Row="4" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,2,0,0"
+            <Border Grid.Row="4" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,2,0,0"
                     Padding="20,14" Margin="0,14,0,0">
                 <Grid>
                     <TextBlock x:Name="SelectionSummary" Style="{StaticResource Caption}" VerticalAlignment="Center"

@@ -8,8 +8,8 @@
         Title="RouteShield"
         Width="1320" Height="840" MinWidth="1120" MinHeight="720"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource BgBrush}"
-        Foreground="{StaticResource TextBrush}"
+        Background="{DynamicResource BgBrush}"
+        Foreground="{DynamicResource TextBrush}"
         FontFamily="{StaticResource BodyFont}"
         TextOptions.TextFormattingMode="Ideal"
         UseLayoutRounding="True">
@@ -26,7 +26,7 @@
         </Grid.RowDefinitions>
 
         <!-- ══ Title bar ══ -->
-        <Border Grid.Row="0" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2">
+        <Border Grid.Row="0" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -35,30 +35,30 @@
 
                 <StackPanel Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
                     <views:BrandMark Width="17" Height="20"
-                                     ShieldBrush="{StaticResource TextBrush}"
-                                     RouteBrush="{StaticResource AccentBrush}" />
+                                     ShieldBrush="{DynamicResource TextBrush}"
+                                     RouteBrush="{DynamicResource AccentBrush}" />
                     <TextBlock Margin="10,0,0,0" VerticalAlignment="Center"
                                FontFamily="{StaticResource HeadingFont}" FontSize="12"
                                ui:Typo.Tracked="ROUTESHIELD" />
                     <TextBlock Margin="10,0,0,0" VerticalAlignment="Center" FontSize="11"
-                               Foreground="{StaticResource Neutral600Brush}"
+                               Foreground="{DynamicResource Neutral600Brush}"
                                Text="{Binding AppVersion}" />
                     <Border Margin="12,0,0,0" VerticalAlignment="Center" Padding="8,3"
                             CornerRadius="{StaticResource RadiusXs}"
-                            Background="{StaticResource Accent100Brush}"
+                            Background="{DynamicResource AccentTintBrush}"
                             Visibility="{Binding IsAdministrator, Converter={StaticResource Hide}}">
                         <TextBlock FontFamily="{StaticResource HeadingFont}" FontSize="9"
-                                   Foreground="{StaticResource Accent800Brush}"
+                                   Foreground="{DynamicResource AccentTextStrongBrush}"
                                    ui:Typo.Tracked="NOT ELEVATED" />
                     </Border>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" shell:WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button Style="{StaticResource WindowButton}" Click="OnMinimise" ToolTip="Minimise">
-                        <Path Data="M0,0 L9,0" Stroke="{StaticResource TextBrush}" StrokeThickness="1.4" />
+                        <Path Data="M0,0 L9,0" Stroke="{DynamicResource TextBrush}" StrokeThickness="1.4" />
                     </Button>
                     <Button Style="{StaticResource WindowButton}" Click="OnToggleMaximise" ToolTip="Maximise">
-                        <Rectangle Width="9" Height="9" Stroke="{StaticResource TextBrush}" StrokeThickness="1.4" />
+                        <Rectangle Width="9" Height="9" Stroke="{DynamicResource TextBrush}" StrokeThickness="1.4" />
                     </Button>
                     <Button Style="{StaticResource CloseWindowButton}" Click="OnClose" ToolTip="Close" />
                 </StackPanel>
@@ -72,9 +72,9 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,2,0">
+            <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,2,0">
                 <DockPanel Margin="0,16,0,0">
-                    <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource DividerBrush}"
+                    <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource DividerBrush}"
                             BorderThickness="0,2,0,0" Padding="16">
                         <StackPanel>
                             <TextBlock Style="{StaticResource Kicker}" ui:Typo.Tracked="STATUS" />
@@ -88,10 +88,10 @@
                                            Text="{Binding StateWord}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource BaseText}">
-                                            <Setter Property="Foreground" Value="{StaticResource Neutral700Brush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource Neutral700Brush}" />
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsConnected}" Value="True">
-                                                    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -130,12 +130,12 @@
         </Grid>
 
         <!-- ══ Busy scrim ══ -->
-        <Border Grid.Row="0" Grid.RowSpan="2" Background="{StaticResource ScrimBrush}"
+        <Border Grid.Row="0" Grid.RowSpan="2" Background="{DynamicResource ScrimBrush}"
                 Visibility="{Binding IsBusy, Converter={StaticResource Show}}">
-            <Border Style="{StaticResource Card}" Background="{StaticResource BgBrush}" BorderThickness="0"
-                    HorizontalAlignment="Center" VerticalAlignment="Center" Effect="{StaticResource ShadowLg}">
+            <Border Style="{StaticResource Card}" Background="{DynamicResource BgBrush}" BorderThickness="0"
+                    HorizontalAlignment="Center" VerticalAlignment="Center" Effect="{DynamicResource ShadowLg}">
                 <StackPanel>
-                    <TextBlock Style="{StaticResource Kicker}" Foreground="{StaticResource AccentBrush}"
+                    <TextBlock Style="{StaticResource Kicker}" Foreground="{DynamicResource AccentBrush}"
                                ui:Typo.Tracked="WORKING" />
                     <TextBlock Style="{StaticResource SectionTitle}" Margin="0,10,0,0" Text="{Binding BusyMessage}" />
                 </StackPanel>

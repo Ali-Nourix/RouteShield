@@ -9,6 +9,7 @@ using Microsoft.Win32;
 using RouteShield.Services;
 using RouteShield.Subscriptions;
 using RouteShield.Tunnels;
+using RouteShield.Ui;
 
 namespace RouteShield.ViewModels;
 
@@ -48,6 +49,9 @@ public sealed class ShellViewModel : Observable
     private readonly Dictionary<Guid, LibrarySection> _sections = [];
     private readonly Dictionary<Guid, (LatencyState State, int? Milliseconds, string? Failure)> _latencyMemory = [];
 
+    /// <summary>The "fastest of this subscription" entry per subscription; synthesised, never saved.</summary>
+    private readonly Dictionary<Guid, VpnProfile> _autoProfiles = [];
+
     private AppSettings _settings = new();
     private bool _loaded;
     private bool _rebuildingLibrary;
@@ -64,6 +68,7 @@ public sealed class ShellViewModel : Observable
     private string _busyMessage = string.Empty;
     private bool _sortByLatency;
     private bool _isTestingLatency;
+    private bool _isEditorOpen;
 
     public ShellViewModel(IUiHost host)
     {
@@ -78,9 +83,10 @@ public sealed class ShellViewModel : Observable
 
         NewProfileCommand = new RelayCommand(NewProfile);
         ImportProfileCommand = new AsyncRelayCommand(ImportProfileAsync);
-        SaveProfileCommand = new AsyncRelayCommand(SaveProfileAsync);
-        DeleteProfileCommand = new AsyncRelayCommand(DeleteProfileAsync, () => SelectedProfile is not null);
+        SaveProfileCommand = new AsyncRelayCommand(SaveProfileAsync, () => SelectedProfile is null || CanEditSelectedProfile);
+        DeleteProfileCommand = new AsyncRelayCommand(DeleteProfileAsync, () => CanEditSelectedProfile);
         DetectFormatCommand = new RelayCommand(DetectFormat);
+        ToggleEditorCommand = new RelayCommand(() => IsEditorOpen = !IsEditorOpen);
 
         AddSubscriptionCommand = new AsyncRelayCommand(AddSubscriptionAsync);
         EditSubscriptionCommand = new AsyncRelayCommand(EditSubscriptionAsync);
@@ -142,6 +148,9 @@ public sealed class ShellViewModel : Observable
     public ObservableCollection<AppTarget> Apps { get; } = [];
 
     public ObservableCollection<ProfileItem> Library { get; } = [];
+
+    /// <summary>Everything the connect button can be pointed at: automatic entries first, then every node.</summary>
+    public ObservableCollection<VpnProfile> ConnectTargets { get; } = [];
 
     public ListCollectionView LibraryView { get; }
 
@@ -304,6 +313,29 @@ public sealed class ShellViewModel : Observable
         set => ApplySetting(settings => settings.CloseToTray = value, _settings.CloseToTray == value);
     }
 
+    public bool TlsFragment
+    {
+        get => _settings.TlsFragment;
+        set => ApplySetting(settings => settings.TlsFragment = value, _settings.TlsFragment == value);
+    }
+
+    public AppTheme Theme
+    {
+        get => _settings.Theme;
+        set
+        {
+            if (_settings.Theme == value)
+            {
+                return;
+            }
+
+            _settings.Theme = value;
+            Raise(nameof(Theme));
+            ThemeManager.Apply(value);
+            QueueSave();
+        }
+    }
+
     public bool BrowserBridgeEnabled
     {
         get => _settings.BrowserBridgeEnabled;
@@ -373,6 +405,11 @@ public sealed class ShellViewModel : Observable
         get => _selectedProfile;
         set
         {
+            if (_rebuildingLibrary && value is null)
+            {
+                return;
+            }
+
             if (!Set(ref _selectedProfile, value))
             {
                 return;
@@ -380,7 +417,12 @@ public sealed class ShellViewModel : Observable
 
             _settings.SelectedProfileId = value?.Id;
             EditorName = value?.Name ?? string.Empty;
-            EditorConfig = value?.ConfigText ?? string.Empty;
+            EditorConfig = value switch
+            {
+                null => string.Empty,
+                { IsAutomatic: true } => AutomaticDescription(value),
+                _ => value.ConfigText
+            };
             EditorFormat = value?.Format.ToUpperInvariant() ?? "NO PROFILE";
 
             var item = Library.FirstOrDefault(candidate => candidate.Profile == value);
@@ -394,8 +436,10 @@ public sealed class ShellViewModel : Observable
             Raise(nameof(SelectedProfileLabel));
             Raise(nameof(SelectedProfilePinned));
             Raise(nameof(HasSelectedProfile));
+            Raise(nameof(CanEditSelectedProfile));
             ConnectCommand.RaiseCanExecuteChanged();
             ValidateCommand.RaiseCanExecuteChanged();
+            SaveProfileCommand.RaiseCanExecuteChanged();
             DeleteProfileCommand.RaiseCanExecuteChanged();
             QueueSave();
         }
@@ -403,16 +447,29 @@ public sealed class ShellViewModel : Observable
 
     public bool HasSelectedProfile => SelectedProfile is not null;
 
-    public string SelectedProfileLabel => SelectedProfile is null
-        ? "No profile selected"
-        : $"{SelectedProfile.Name} · {SelectedProfile.Format}";
+    /// <summary>Automatic entries have nothing to edit, pin or delete; they follow their subscription.</summary>
+    public bool CanEditSelectedProfile => SelectedProfile is { IsAutomatic: false };
+
+    public string SelectedProfileLabel => SelectedProfile switch
+    {
+        null => "No profile selected",
+        { IsAutomatic: true } when IsConnected && _tunnel.GroupSelection is { } node => $"{SelectedProfile.Name} · via {node}",
+        { IsAutomatic: true } => $"{SelectedProfile.Name} · the core picks the node",
+        _ => $"{SelectedProfile.Name} · {SelectedProfile.Format}"
+    };
+
+    public bool IsEditorOpen
+    {
+        get => _isEditorOpen;
+        set => Set(ref _isEditorOpen, value);
+    }
 
     public bool SelectedProfilePinned
     {
         get => SelectedProfile?.BrowserPinned ?? false;
         set
         {
-            if (SelectedProfile is null || SelectedProfile.BrowserPinned == value)
+            if (SelectedProfile is null or { IsAutomatic: true } || SelectedProfile.BrowserPinned == value)
             {
                 return;
             }
@@ -550,6 +607,8 @@ public sealed class ShellViewModel : Observable
 
     public RelayCommand DetectFormatCommand { get; }
 
+    public RelayCommand ToggleEditorCommand { get; }
+
     public AsyncRelayCommand AddSubscriptionCommand { get; }
 
     public AsyncRelayCommand EditSubscriptionCommand { get; }
@@ -607,9 +666,9 @@ public sealed class ShellViewModel : Observable
         }
 
         RebuildLibrary();
+        ThemeManager.Apply(_settings.Theme);
 
-        SelectedProfile = Profiles.FirstOrDefault(profile => profile.Id == _settings.SelectedProfileId)
-                          ?? Profiles.FirstOrDefault();
+        SelectedProfile = FindSelectable(_settings.SelectedProfileId) ?? Profiles.FirstOrDefault();
 
         ProcessCatalog.RefreshStates(Apps);
         RaiseAllSettings();
@@ -665,8 +724,9 @@ public sealed class ShellViewModel : Observable
         try
         {
             BusyMessage = "Starting the tunnel";
+            var target = TunnelController.ResolveTarget(SelectedProfile, Profiles);
             var pinned = Profiles.Where(profile => profile.BrowserPinned).ToList();
-            await _tunnel.ConnectAsync(SelectedProfile, _settings, [.. Apps], pinned);
+            await _tunnel.ConnectAsync(SelectedProfile, target, _settings, [.. Apps], pinned);
         }
         catch (Exception exception) when (IsExpected(exception))
         {
@@ -704,7 +764,7 @@ public sealed class ShellViewModel : Observable
         try
         {
             BusyMessage = "Checking the configuration";
-            var output = await _tunnel.ValidateAsync(SelectedProfile, _settings, [.. Apps]);
+            var output = await _tunnel.ValidateAsync(TunnelController.ResolveTarget(SelectedProfile, Profiles), _settings, [.. Apps]);
             await _host.AlertAsync("Configuration", "The core accepted this profile", output);
         }
         catch (Exception exception) when (IsExpected(exception))
@@ -737,6 +797,7 @@ public sealed class ShellViewModel : Observable
         Profiles.Add(profile);
         RebuildLibrary();
         SelectedProfile = profile;
+        IsEditorOpen = true;
         Page = ShellPage.Profiles;
     }
 
@@ -769,6 +830,7 @@ public sealed class ShellViewModel : Observable
             Profiles.Add(profile);
             RebuildLibrary();
             SelectedProfile = profile;
+            IsEditorOpen = true;
             await SaveAsync();
 
             AppLog.Write(LogCategory.Config, $"Imported profile \"{profile.Name}\" ({parsed.FormatName})");
@@ -781,7 +843,7 @@ public sealed class ShellViewModel : Observable
 
     private async Task SaveProfileAsync()
     {
-        if (SelectedProfile is null)
+        if (SelectedProfile is null or { IsAutomatic: true })
         {
             NewProfile();
         }
@@ -812,7 +874,7 @@ public sealed class ShellViewModel : Observable
 
     private async Task DeleteProfileAsync()
     {
-        if (SelectedProfile is not { } profile)
+        if (SelectedProfile is not { IsAutomatic: false } profile)
         {
             return;
         }
@@ -888,9 +950,10 @@ public sealed class ShellViewModel : Observable
 
             Subscriptions.Remove(subscription);
             _sections.Remove(subscription.Id);
+            _autoProfiles.Remove(subscription.Id);
             RebuildLibrary();
 
-            if (SelectedProfile is null || !Profiles.Contains(SelectedProfile))
+            if (SelectedProfile is null || !IsSelectable(SelectedProfile))
             {
                 SelectedProfile = Profiles.FirstOrDefault();
             }
@@ -1016,12 +1079,33 @@ public sealed class ShellViewModel : Observable
             added++;
         }
 
-        if (SelectedProfile is null || !Profiles.Contains(SelectedProfile))
+        if (SelectedProfile is null || !IsSelectable(SelectedProfile))
         {
             SelectedProfile = Profiles.FirstOrDefault(profile => profile.Name == selectedName) ?? Profiles.FirstOrDefault();
         }
 
         return added;
+    }
+
+    private bool IsSelectable(VpnProfile profile) => Profiles.Contains(profile) || _autoProfiles.ContainsValue(profile);
+
+    private VpnProfile? FindSelectable(Guid? id) => id is null
+        ? null
+        : Profiles.FirstOrDefault(profile => profile.Id == id) ?? _autoProfiles.Values.FirstOrDefault(profile => profile.Id == id);
+
+    private string AutomaticDescription(VpnProfile automatic)
+    {
+        var nodes = Profiles.Count(profile => profile.SubscriptionId == automatic.SubscriptionId);
+        return $"""
+            Automatic selection has no configuration of its own.
+
+            RouteShield hands the core every node of this subscription ({nodes} at the moment).
+            The core measures all of them, carries traffic over the fastest, re-tests every
+            {RuntimeConfigBuilder.GroupTestInterval.TrimEnd('m')} minutes, and moves to the next node when the
+            chosen one stops answering — without dropping the tunnel.
+
+            Refresh the subscription to change the set of nodes.
+            """;
     }
 
     // ══ Library ══
@@ -1037,6 +1121,7 @@ public sealed class ShellViewModel : Observable
         try
         {
             Library.Clear();
+            ConnectTargets.Clear();
 
             foreach (var profile in Profiles)
             {
@@ -1048,14 +1133,52 @@ public sealed class ShellViewModel : Observable
 
                 Library.Add(item);
             }
+
+            // A subscription with two or more nodes gets a "fastest of" entry at the top of its section.
+            foreach (var stale in _autoProfiles.Keys.Where(id => Subscriptions.All(subscription => subscription.Id != id)).ToList())
+            {
+                _autoProfiles.Remove(stale);
+            }
+
+            foreach (var subscription in Subscriptions.OrderBy(subscription => subscription.Name, StringComparer.CurrentCultureIgnoreCase))
+            {
+                var nodes = Profiles.Count(profile => profile.SubscriptionId == subscription.Id);
+                if (nodes < 2)
+                {
+                    _autoProfiles.Remove(subscription.Id);
+                    continue;
+                }
+
+                if (!_autoProfiles.TryGetValue(subscription.Id, out var automatic))
+                {
+                    automatic = VpnProfile.AutomaticFor(subscription);
+                    _autoProfiles[subscription.Id] = automatic;
+                }
+
+                automatic.Name = $"Fastest of {subscription.Name}";
+                Library.Add(new ProfileItem(automatic, SectionFor(automatic), nodes));
+                ConnectTargets.Add(automatic);
+            }
+
+            foreach (var profile in Profiles)
+            {
+                ConnectTargets.Add(profile);
+            }
         }
         finally
         {
             _rebuildingLibrary = false;
         }
 
+        if (SelectedProfile is { IsAutomatic: true } selected && !_autoProfiles.ContainsValue(selected))
+        {
+            SelectedProfile = Profiles.FirstOrDefault(profile => profile.SubscriptionId == selected.SubscriptionId) ?? Profiles.FirstOrDefault();
+        }
+
         _selectedItem = Library.FirstOrDefault(item => item.Profile == SelectedProfile);
         Raise(nameof(SelectedItem));
+        // The connect list was refilled; the combo bound to it re-reads the selection.
+        Raise(nameof(SelectedProfile));
         Raise(nameof(LibrarySummary));
         Raise(nameof(PinnedSummary));
         Raise(nameof(StateWord));
@@ -1092,6 +1215,7 @@ public sealed class ShellViewModel : Observable
             LibraryView.SortDescriptions.Clear();
             LibraryView.SortDescriptions.Add(new SortDescription("Section.Order", ListSortDirection.Ascending));
             LibraryView.SortDescriptions.Add(new SortDescription("Section.Title", ListSortDirection.Ascending));
+            LibraryView.SortDescriptions.Add(new SortDescription(nameof(ProfileItem.Rank), ListSortDirection.Ascending));
 
             if (SortByLatency)
             {
@@ -1104,7 +1228,7 @@ public sealed class ShellViewModel : Observable
 
     private async Task TestLatencyAsync()
     {
-        var items = Library.ToList();
+        var items = Library.Where(item => !item.Profile.IsAutomatic).ToList();
         if (items.Count == 0)
         {
             return;
@@ -1287,7 +1411,9 @@ public sealed class ShellViewModel : Observable
         _settings.AutoReconnect = defaults.AutoReconnect;
         _settings.AutoConnect = defaults.AutoConnect;
         _settings.CloseToTray = defaults.CloseToTray;
+        _settings.TlsFragment = defaults.TlsFragment;
         BrowserBridgeEnabled = defaults.BrowserBridgeEnabled;
+        Theme = defaults.Theme;
 
         RaiseAllSettings();
         await SaveAsync();
@@ -1312,7 +1438,7 @@ public sealed class ShellViewModel : Observable
                          nameof(IsTransitioning), nameof(IsKillSwitchHolding), nameof(CanConnect),
                          nameof(UptimeText), nameof(LatencyText), nameof(ThroughputText), nameof(ExitIpText),
                          nameof(ProbeFailure), nameof(CoreVersionText), nameof(KillSwitchStateText),
-                         nameof(AppStateWord), nameof(BridgeSummary)
+                         nameof(AppStateWord), nameof(BridgeSummary), nameof(SelectedProfileLabel)
                      })
             {
                 Raise(property);
@@ -1418,6 +1544,7 @@ public sealed class ShellViewModel : Observable
                      nameof(RouteMode), nameof(RouteModeText), nameof(AppKillSwitch), nameof(DnsProtection),
                      nameof(Ipv6Protection), nameof(AllowLan), nameof(AutoReconnect), nameof(AutoConnect),
                      nameof(CloseToTray), nameof(StartWithWindows), nameof(BrowserBridgeEnabled), nameof(BridgeSummary),
+                     nameof(TlsFragment), nameof(Theme),
                      nameof(ShowFirstRun), nameof(AppSummary), nameof(StateWord), nameof(StatusDetail)
                  })
         {

@@ -48,13 +48,29 @@ public static class TunnelParser
             return ParseShadowsocks(text);
         }
 
+        if (text.StartsWith("hysteria2://", StringComparison.OrdinalIgnoreCase) ||
+            text.StartsWith("hy2://", StringComparison.OrdinalIgnoreCase))
+        {
+            return ParseHysteria2(text);
+        }
+
+        if (text.StartsWith("tuic://", StringComparison.OrdinalIgnoreCase))
+        {
+            return ParseTuic(text);
+        }
+
+        if (text.StartsWith("anytls://", StringComparison.OrdinalIgnoreCase))
+        {
+            return ParseAnyTls(text);
+        }
+
         if (text.StartsWith('{'))
         {
             return ParseSingBoxJson(text);
         }
 
         throw new NotSupportedException(
-            "Unknown format. Paste a VLESS, VMess, Trojan or Shadowsocks link, a WireGuard .conf, or sing-box JSON.");
+            "Unknown format. Paste a VLESS, VMess, Trojan, Shadowsocks, Hysteria2, TUIC or AnyTLS link, a WireGuard .conf, or sing-box JSON.");
     }
 
     public static string DetectFormat(string input)
@@ -217,6 +233,187 @@ public static class TunnelParser
         return FromOutbound("Shadowsocks", name, outbound);
     }
 
+    /// <summary>
+    /// <c>hysteria2://auth@host:port/?sni=…&amp;insecure=1&amp;obfs=salamander&amp;obfs-password=…&amp;mport=…#name</c>,
+    /// as written by the Hysteria project and the common clients. QUIC with Brutal congestion
+    /// control: the protocol that keeps its speed on a lossy, throttled link, which is why it
+    /// is worth carrying here.
+    /// </summary>
+    private static ParsedTunnel ParseHysteria2(string text)
+    {
+        var uri = ParseUri(text, "Hysteria2");
+        var query = ParseQuery(uri.Query);
+
+        var outbound = new JsonObject
+        {
+            ["type"] = "hysteria2",
+            ["tag"] = ProxyTag,
+            ["server"] = uri.Host,
+            ["server_port"] = uri.Port > 0 ? uri.Port : 443,
+            ["password"] = Uri.UnescapeDataString(uri.UserInfo)
+        };
+
+        // Port hopping: "mport=20000-30000" or a list; sing-box writes a range as "start:end".
+        var hopping = SplitCsv(FirstNonEmpty(Lookup(query, "mport"), Lookup(query, "ports")))
+            .Select(PortRange)
+            .Where(range => range is not null)
+            .Select(range => range!)
+            .ToArray();
+        if (hopping.Length > 0)
+        {
+            outbound["server_ports"] = ToJsonArray(hopping);
+            outbound.Remove("server_port");
+        }
+
+        var obfs = Lookup(query, "obfs");
+        if (obfs.Length > 0 && !obfs.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            outbound["obfs"] = new JsonObject
+            {
+                ["type"] = obfs,
+                ["password"] = FirstNonEmpty(Lookup(query, "obfs-password"), Lookup(query, "obfsParam"), Lookup(query, "obfs_password"))
+            };
+        }
+
+        if (Megabits(FirstNonEmpty(Lookup(query, "up"), Lookup(query, "upmbps"))) is { } up)
+        {
+            outbound["up_mbps"] = up;
+        }
+
+        if (Megabits(FirstNonEmpty(Lookup(query, "down"), Lookup(query, "downmbps"))) is { } down)
+        {
+            outbound["down_mbps"] = down;
+        }
+
+        var tls = new JsonObject
+        {
+            ["enabled"] = true,
+            ["server_name"] = FirstNonEmpty(Lookup(query, "sni"), Lookup(query, "peer"), uri.Host)
+        };
+
+        if (IsTrue(Lookup(query, "insecure")) || IsTrue(Lookup(query, "allowInsecure")))
+        {
+            tls["insecure"] = true;
+        }
+
+        var alpn = SplitCsv(Lookup(query, "alpn"));
+        if (alpn.Length > 0)
+        {
+            tls["alpn"] = ToJsonArray(alpn);
+        }
+
+        outbound["tls"] = tls;
+
+        var parsed = FromOutbound("Hysteria2", FragmentOrDefault(uri, "Hysteria2"), outbound);
+        if (Lookup(query, "pinSHA256").Length > 0)
+        {
+            parsed.Warnings.Add("Certificate pinning (pinSHA256) is not supported by the core; the certificate is verified against the system store instead.");
+        }
+
+        return parsed;
+    }
+
+    /// <summary><c>tuic://uuid:password@host:port?congestion_control=bbr&amp;udp_relay_mode=native&amp;alpn=h3&amp;sni=…#name</c>.</summary>
+    private static ParsedTunnel ParseTuic(string text)
+    {
+        var uri = ParseUri(text, "TUIC");
+        var query = ParseQuery(uri.Query);
+
+        var userInfo = Uri.UnescapeDataString(uri.UserInfo);
+        var separator = userInfo.IndexOf(':');
+        var uuid = separator >= 0 ? userInfo[..separator] : userInfo;
+        var password = separator >= 0 ? userInfo[(separator + 1)..] : string.Empty;
+
+        if (uuid.Length == 0)
+        {
+            throw new FormatException("The TUIC link has no user uuid.");
+        }
+
+        var outbound = new JsonObject
+        {
+            ["type"] = "tuic",
+            ["tag"] = ProxyTag,
+            ["server"] = uri.Host,
+            ["server_port"] = ParsePort(uri),
+            ["uuid"] = uuid,
+            ["password"] = password,
+            ["congestion_control"] = FirstNonEmpty(Lookup(query, "congestion_control"), Lookup(query, "congestion"), "bbr").ToLowerInvariant()
+        };
+
+        var relay = FirstNonEmpty(Lookup(query, "udp_relay_mode"), Lookup(query, "udp-relay-mode"), "native").ToLowerInvariant();
+        outbound["udp_relay_mode"] = relay is "quic" ? "quic" : "native";
+
+        if (IsTrue(Lookup(query, "zero_rtt_handshake")) || IsTrue(Lookup(query, "reduce_rtt")))
+        {
+            outbound["zero_rtt_handshake"] = true;
+        }
+
+        var tls = new JsonObject
+        {
+            ["enabled"] = true,
+            ["server_name"] = FirstNonEmpty(Lookup(query, "sni"), Lookup(query, "peer"), uri.Host),
+            ["alpn"] = ToJsonArray(SplitCsv(FirstNonEmpty(Lookup(query, "alpn"), "h3")))
+        };
+
+        if (IsTrue(Lookup(query, "allow_insecure")) || IsTrue(Lookup(query, "allowInsecure")) || IsTrue(Lookup(query, "insecure")))
+        {
+            tls["insecure"] = true;
+        }
+
+        if (IsTrue(Lookup(query, "disable_sni")))
+        {
+            tls["disable_sni"] = true;
+        }
+
+        outbound["tls"] = tls;
+        return FromOutbound("TUIC", FragmentOrDefault(uri, "TUIC"), outbound);
+    }
+
+    /// <summary><c>anytls://password@host:port?sni=…&amp;insecure=1&amp;fp=chrome#name</c>.</summary>
+    private static ParsedTunnel ParseAnyTls(string text)
+    {
+        var uri = ParseUri(text, "AnyTLS");
+        var query = ParseQuery(uri.Query);
+
+        var outbound = new JsonObject
+        {
+            ["type"] = "anytls",
+            ["tag"] = ProxyTag,
+            ["server"] = uri.Host,
+            ["server_port"] = ParsePort(uri),
+            ["password"] = Uri.UnescapeDataString(uri.UserInfo)
+        };
+
+        ApplyTls(outbound, query, uri.Host, tlsByDefault: true);
+        return FromOutbound("AnyTLS", FragmentOrDefault(uri, "AnyTLS"), outbound);
+    }
+
+    /// <summary>"20000-30000" → "20000:30000"; a single port stands for itself; anything else is dropped.</summary>
+    private static string? PortRange(string token)
+    {
+        var parts = token.Split('-', 2, StringSplitOptions.TrimEntries);
+        if (!int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var start) || start is <= 0 or > 65535)
+        {
+            return null;
+        }
+
+        if (parts.Length == 1)
+        {
+            return $"{start}:{start}";
+        }
+
+        return int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var end) && end >= start && end <= 65535
+            ? $"{start}:{end}"
+            : null;
+    }
+
+    /// <summary>"100", "100 mbps" or "100mbps" → 100; anything the core cannot use → null.</summary>
+    private static int? Megabits(string value)
+    {
+        var digits = new string(value.TakeWhile(character => char.IsAsciiDigit(character)).ToArray());
+        return int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out var number) && number > 0 ? number : null;
+    }
+
     private static ParsedTunnel ParseWireGuard(string text)
     {
         var sections = ParseIni(text);
@@ -338,9 +535,20 @@ public static class TunnelParser
         return match is null ? null : Clone(match);
     }
 
+    /// <summary>Transports whose TLS handshake is a plain client hello over TCP, where a browser fingerprint is safe to imitate.</summary>
+    private static readonly HashSet<string> FingerprintableTransports = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "tcp", "none", "raw", "ws", "websocket", "httpupgrade"
+    };
+
     /// <summary>
     /// Builds the TLS block. Reality is refused by sing-box unless uTLS is also on, so a link that
     /// asks for Reality without a fingerprint gets the Chrome profile rather than a failed start.
+    ///
+    /// A link that names no fingerprint gets Chrome's as well whenever the transport allows it.
+    /// The core's own client hello is recognisably Go, and networks that fingerprint TLS single
+    /// it out; looking like a browser costs nothing and is what every current client does. The
+    /// HTTP/2-based transports (gRPC, h2) are left alone, where imitation is not reliable.
     /// </summary>
     private static void ApplyTls(JsonObject outbound, Dictionary<string, string> query, string server, bool tlsByDefault)
     {
@@ -373,9 +581,12 @@ public static class TunnelParser
         }
 
         var fingerprint = Lookup(query, "fp");
-        var wantsUtls = fingerprint.Length > 0 && !fingerprint.Equals("none", StringComparison.OrdinalIgnoreCase);
+        var refusesUtls = fingerprint.Equals("none", StringComparison.OrdinalIgnoreCase);
+        var wantsUtls = fingerprint.Length > 0 && !refusesUtls;
+        var transport = FirstNonEmpty(Lookup(query, "type"), Lookup(query, "net"), "tcp");
+        var fingerprintByDefault = !refusesUtls && FingerprintableTransports.Contains(transport);
 
-        if (wantsUtls || usesReality)
+        if (wantsUtls || usesReality || fingerprintByDefault)
         {
             tls["utls"] = new JsonObject
             {

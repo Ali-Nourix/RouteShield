@@ -1,0 +1,77 @@
+<!--
+    The dark palette: ambient darkness with a hairline edge. The ground goes to a warm
+    near-black, the ink becomes paper, and the ramps are read from the other end so a step
+    that was "muted on paper" is now "muted on darkness" at the same distance from the
+    ground. The accent lifts one step so red text and the connect button keep their
+    contrast; ink-card roles invert with the card.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Ground -->
+    <Color x:Key="BgColor">#151413</Color>
+    <Color x:Key="SurfaceColor">#1E1C1B</Color>
+    <Color x:Key="TextColor">#F3F2F2</Color>
+    <Color x:Key="AccentColor">#FF563C</Color>
+    <Color x:Key="Accent2Color">#E15B47</Color>
+
+    <!-- Neutral ramp, read from the dark end -->
+    <Color x:Key="Neutral100Color">#242221</Color>
+    <Color x:Key="Neutral200Color">#302E2D</Color>
+    <Color x:Key="Neutral300Color">#3D3A39</Color>
+    <Color x:Key="Neutral400Color">#4F4C4B</Color>
+    <Color x:Key="Neutral500Color">#726E6D</Color>
+    <Color x:Key="Neutral600Color">#938F8E</Color>
+    <Color x:Key="Neutral700Color">#AFABAA</Color>
+    <Color x:Key="Neutral800Color">#CBC7C6</Color>
+    <Color x:Key="Neutral900Color">#E6E3E2</Color>
+
+    <!-- Accent ramp, unchanged in value; the semantic roles below pick different steps -->
+    <Color x:Key="Accent100Color">#FFF2EF</Color>
+    <Color x:Key="Accent200Color">#FFE0D9</Color>
+    <Color x:Key="Accent300Color">#FFC4B8</Color>
+    <Color x:Key="Accent400Color">#FF9783</Color>
+    <Color x:Key="Accent500Color">#FF563C</Color>
+    <Color x:Key="Accent600Color">#DD2B0F</Color>
+    <Color x:Key="Accent700Color">#AE1800</Color>
+    <Color x:Key="Accent800Color">#7C1405</Color>
+    <Color x:Key="Accent900Color">#4D170E</Color>
+
+    <SolidColorBrush x:Key="BgBrush" Color="{StaticResource BgColor}" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
+    <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}" />
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="Accent2Brush" Color="{StaticResource Accent2Color}" />
+
+    <SolidColorBrush x:Key="Neutral100Brush" Color="{StaticResource Neutral100Color}" />
+    <SolidColorBrush x:Key="Neutral200Brush" Color="{StaticResource Neutral200Color}" />
+    <SolidColorBrush x:Key="Neutral300Brush" Color="{StaticResource Neutral300Color}" />
+    <SolidColorBrush x:Key="Neutral400Brush" Color="{StaticResource Neutral400Color}" />
+    <SolidColorBrush x:Key="Neutral500Brush" Color="{StaticResource Neutral500Color}" />
+    <SolidColorBrush x:Key="Neutral600Brush" Color="{StaticResource Neutral600Color}" />
+    <SolidColorBrush x:Key="Neutral700Brush" Color="{StaticResource Neutral700Color}" />
+    <SolidColorBrush x:Key="Neutral800Brush" Color="{StaticResource Neutral800Color}" />
+    <SolidColorBrush x:Key="Neutral900Brush" Color="{StaticResource Neutral900Color}" />
+
+    <!-- Semantic accent roles -->
+    <SolidColorBrush x:Key="AccentTintBrush" Color="#3B1A14" />
+    <SolidColorBrush x:Key="AccentTextBrush" Color="{StaticResource Accent400Color}" />
+    <SolidColorBrush x:Key="AccentTextStrongBrush" Color="{StaticResource Accent300Color}" />
+    <!-- The ink card is paper here, so accent text on it goes dark. -->
+    <SolidColorBrush x:Key="AccentOnInkBrush" Color="#B8240E" />
+    <!-- Hover lifts towards light on a dark ground. -->
+    <SolidColorBrush x:Key="AccentDeepBrush" Color="#FF6E57" />
+    <SolidColorBrush x:Key="AccentDeeperBrush" Color="#FF8570" />
+
+    <SolidColorBrush x:Key="DividerBrush" Color="{StaticResource TextColor}" Opacity="0.14" />
+    <SolidColorBrush x:Key="HoverBrush" Color="{StaticResource TextColor}" Opacity="0.08" />
+    <SolidColorBrush x:Key="PressedBrush" Color="{StaticResource TextColor}" Opacity="0.15" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentColor}" Opacity="0.14" />
+    <SolidColorBrush x:Key="RowHoverBrush" Color="{StaticResource TextColor}" Opacity="0.05" />
+    <SolidColorBrush x:Key="ScrimBrush" Color="#000000" Opacity="0.62" />
+
+    <DropShadowEffect x:Key="ShadowLg" BlurRadius="36" ShadowDepth="14" Direction="270"
+                      Color="#000000" Opacity="0.55" />
+
+</ResourceDictionary>

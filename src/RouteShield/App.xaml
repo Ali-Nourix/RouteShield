@@ -6,6 +6,8 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
+                <!-- The palette comes first and is the dictionary ThemeManager swaps for dark mode. -->
+                <ResourceDictionary Source="Theme/Palette.Light.xaml" />
                 <ResourceDictionary Source="Theme/Tokens.xaml" />
                 <ResourceDictionary Source="Theme/Controls.xaml" />
             </ResourceDictionary.MergedDictionaries>

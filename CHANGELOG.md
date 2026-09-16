@@ -1,5 +1,63 @@
 # Changelog
 
+## 1.3.0
+
+### Fixed
+
+- **A selected sidebar item or segment turned black but its label stayed black.** The app-wide
+  text style forced the ink colour on every label, including the ones generated inside a
+  selected control. Text now inherits its colour from the control that holds it, so a label
+  turns light the moment the control fills with ink — in the navigation, the Name/Latency
+  switch, tool tips and every button alike.
+- **Through the Chrome extension a site loaded but its video did not.** Chrome routes by site,
+  and a site is more than its own domain: YouTube's page comes from youtube.com, the video from
+  googlevideo.com, which went out unprotected and was blocked. Each assigned site now carries the
+  domains it is known to load from, and the extension learns the rest by watching the tab, so the
+  player, images and scripts follow the page. Firefox matches a site's service-worker requests,
+  which carry no tab, to the assigned tab by origin.
+- **The popup's status chip ran off the right edge** with a long profile name; it now shrinks and
+  ends in an ellipsis.
+- **The Firefox add-on package could not be installed.** Windows PowerShell's `Compress-Archive`
+  writes entry names with backslashes, which Firefox rejects. The build now writes the archive
+  itself, with forward slashes and `manifest.json` at the root as Mozilla's packaging guide
+  describes, and names it `.xpi`. CI runs Mozilla's `web-ext lint` over the staged add-on.
+
+### Added
+
+- **Dark mode.** *Security & behaviour → Appearance* offers System, Light and Dark. System
+  follows the Windows app colour and changes with it; the palette swaps in place without a
+  restart. The extension popup follows the browser's colour scheme.
+- **Automatic selection.** Every subscription with two or more nodes gets a *Fastest of …*
+  entry. Connecting to it hands the core all of the subscription's nodes as a `urltest` group:
+  the core measures them, carries traffic over the fastest, re-tests every three minutes and
+  moves to the next node when the chosen one stops answering, without dropping the tunnel. The
+  dashboard names the node in use.
+- **Hysteria2, TUIC and AnyTLS share links** (`hysteria2://`, `hy2://`, `tuic://`,
+  `anytls://`), including Hysteria2 obfuscation, bandwidth hints and port hopping. Hysteria2 and
+  TUIC run over QUIC and keep their speed on lossy, throttled links.
+- **Fragment TLS handshakes** (*Security & behaviour*, off by default): the handshake with the
+  proxy server is split across several packets and TLS records, so a firewall that reads the
+  server name from the first packet never sees it whole. QUIC-based protocols are left alone.
+- **Browser fingerprint by default.** Links that name no `fp=` now imitate Chrome's TLS client
+  hello whenever the transport allows it (TCP, WebSocket, HTTPUpgrade); gRPC and HTTP/2
+  transports are left as declared, and `fp=none` opts out.
+- **Bridge ports stay put across reconnects** when they are still free, so a browser that
+  resolved a route a moment before a reconnect keeps working. Both extensions also re-read the
+  state as soon as a proxy connection fails.
+- **The extensions fail closed.** A tab or site assigned to a profile is never allowed to fall
+  back to the open connection: while the tunnel is down its requests are held (sent to a port
+  nothing listens on) and the badge reads HELD. "No VPN" still leaves directly.
+- The Firefox manifest declares `data_collection_permissions: none`, which Firefox 140+ shows
+  at install time and AMO requires of new submissions.
+
+### Changed
+
+- The profile editor is collapsed by default; the library takes the full width. *Open editor*
+  in the page header, *New profile* and *Import file* open it.
+- Rules between sections are drawn at 12% ink instead of 40%.
+- The Firefox add-on ships as `RouteShield-Extension-firefox-<version>.xpi`; the installable
+  files also sit in the app's `extensions` folder, where *Open extension folder* leads.
+
 ## 1.2.0
 
 ### Fixed

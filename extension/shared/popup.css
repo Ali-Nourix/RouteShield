@@ -1,4 +1,7 @@
-/* Modernist, as in the desktop app: paper ground, ink, one signal red, Archivo set heavy. */
+/*
+ * Modernist, as in the desktop app: paper ground, ink, one signal red, Archivo set heavy.
+ * The palette follows the browser's colour scheme; the dark set mirrors the app's dark palette.
+ */
 @font-face {
   font-family: "Archivo";
   font-weight: 400;
@@ -12,18 +15,40 @@
 }
 
 :root {
+  color-scheme: light dark;
   --bg: #f3f2f2;
   --surface: #eae9e9;
   --ink: #201e1d;
   --accent: #ec3013;
-  --accent-700: #ae1800;
-  --accent-100: #fff2ef;
+  --accent-text: #ae1800;
+  --accent-tint: #fff2ef;
   --n400: #bab6b6;
   --n500: #9b9797;
   --n600: #7d7979;
   --n700: #605d5d;
-  --divider: rgba(32, 30, 29, 0.4);
+  --divider: rgba(32, 30, 29, 0.12);
+  --divider-strong: rgba(32, 30, 29, 0.2);
   --hover: rgba(32, 30, 29, 0.07);
+  --accent-hover: rgba(236, 48, 19, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151413;
+    --surface: #1e1c1b;
+    --ink: #f3f2f2;
+    --accent: #ff563c;
+    --accent-text: #ff9783;
+    --accent-tint: #3b1a14;
+    --n400: #4f4c4b;
+    --n500: #726e6d;
+    --n600: #938f8e;
+    --n700: #afabaa;
+    --divider: rgba(243, 242, 242, 0.14);
+    --divider-strong: rgba(243, 242, 242, 0.24);
+    --hover: rgba(243, 242, 242, 0.08);
+    --accent-hover: rgba(255, 86, 60, 0.14);
+  }
 }
 
 * { box-sizing: border-box; }
@@ -40,11 +65,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   padding: 12px 14px;
   border-bottom: 2px solid var(--divider);
 }
 
-.brand { display: flex; align-items: center; gap: 9px; }
+.brand { display: flex; align-items: center; gap: 9px; flex: none; }
+.brand svg { display: block; }
+.brand .shield { fill: var(--ink); }
+.brand .route { stroke: var(--accent); }
 
 .wordmark {
   font-weight: 800;
@@ -52,18 +81,18 @@ body {
   letter-spacing: 0.16em;
 }
 
+/* The status chip shrinks before anything else does, and its text is cut with an ellipsis. */
 .chip {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 7px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   padding: 4px 9px;
   border-radius: 5px;
-  border: 1px solid var(--divider);
+  border: 1px solid var(--divider-strong);
   font-size: 11px;
-  max-width: 190px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .chip .mark {
@@ -72,6 +101,13 @@ body {
   border-radius: 2px;
   background: var(--n500);
   flex: none;
+}
+
+.chip .label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chip-live { border-color: var(--ink); }
@@ -144,7 +180,7 @@ body {
 }
 
 .choice .text { flex: 1; min-width: 0; }
-.choice .title { font-size: 13.5px; }
+.choice .title { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .choice .hint { font-size: 11.5px; color: var(--n700); margin-top: 1px; }
 
 .choice .tag {
@@ -153,8 +189,8 @@ body {
   letter-spacing: 0.1em;
   padding: 3px 7px;
   border-radius: 4px;
-  background: var(--accent-100);
-  color: var(--accent-700);
+  background: var(--accent-tint);
+  color: var(--accent-text);
   flex: none;
 }
 
@@ -165,17 +201,25 @@ body {
   min-height: 1.4em;
 }
 
-.note.warn { color: var(--accent-700); }
+.note.warn { color: var(--accent-text); }
 
 .foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   margin-top: 8px;
   padding: 10px 14px 12px;
   border-top: 2px solid var(--divider);
   font-size: 11px;
   color: var(--n600);
+}
+
+.foot span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ghost {
@@ -187,6 +231,7 @@ body {
   padding: 4px 6px;
   border-radius: 6px;
   cursor: pointer;
+  flex: none;
 }
 
-.ghost:hover { background: rgba(236, 48, 19, 0.1); }
+.ghost:hover { background: var(--accent-hover); }

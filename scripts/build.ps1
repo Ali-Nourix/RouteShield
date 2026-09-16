@@ -264,11 +264,70 @@ function Copy-Core {
 
 <#
 .SYNOPSIS
-    Stages both browser extensions next to the app and zips each for the release.
+    Writes a zip the way browsers expect one: files at the root, entry names with forward slashes.
+.DESCRIPTION
+    Compress-Archive on Windows PowerShell 5.1 records entry names with backslashes
+    ("shared\popup.html"), and Firefox refuses such an archive as corrupt. This walks the
+    staged folder itself and names every entry with "/", which is what Mozilla's own
+    web-ext build produces and what both browsers read.
+#>
+function New-ExtensionArchive([string]$Source, [string]$Destination) {
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+
+    Remove-Item $Destination -Force -ErrorAction SilentlyContinue
+
+    $root = (Resolve-Path $Source).Path.TrimEnd('\', '/')
+    $stream = [System.IO.File]::Open($Destination, [System.IO.FileMode]::CreateNew)
+    try {
+        $archive = New-Object System.IO.Compression.ZipArchive($stream, [System.IO.Compression.ZipArchiveMode]::Create)
+        try {
+            Get-ChildItem $root -Recurse -File | Sort-Object FullName | ForEach-Object {
+                $relative = $_.FullName.Substring($root.Length + 1).Replace('\', '/')
+                [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                    $archive, $_.FullName, $relative, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+            }
+        }
+        finally {
+            $archive.Dispose()
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
+<#
+.SYNOPSIS
+    Checks a staged add-on the way Mozilla's tooling would, when that tooling is installed.
+.DESCRIPTION
+    web-ext lint is the check AMO runs on upload. It is not fetched here — a local build must
+    not depend on npm — but when web-ext is already on the PATH the staged Firefox add-on is
+    run through it, and lint errors fail the build. CI installs web-ext and always lints.
+#>
+function Test-FirefoxAddon([string]$Staging) {
+    $webExt = Get-Command web-ext -ErrorAction SilentlyContinue
+    if (-not $webExt) {
+        Write-Host '  web-ext is not installed; skipping the add-on lint (npm install -g web-ext to enable it).'
+        return
+    }
+
+    & $webExt.Source lint --source-dir $Staging --self-hosted --no-config-discovery
+    Assert-ExitCode 'web-ext lint'
+}
+
+<#
+.SYNOPSIS
+    Stages both browser extensions next to the app and packages each for the release.
 .DESCRIPTION
     Each browser gets the shared popup and bridge client plus its own manifest and
     background script. The manifest version is rewritten to the package version so the
     add-on and the app it talks to always report the same number.
+
+    Firefox's package is an .xpi: a zip of the add-on's files with manifest.json at the root,
+    as https://extensionworkshop.com/documentation/publish/package-your-extension/ describes.
+    Developer Edition and Nightly install it directly once xpinstall.signatures.required is
+    off; release Firefox needs it signed by AMO, or loaded temporarily from about:debugging.
+    Chrome's is the same layout as a .zip, for "Load unpacked" after extraction.
 #>
 function Copy-Extensions {
     Step 'Packaging the browser extensions'
@@ -277,24 +336,34 @@ function Copy-Extensions {
     $target = Join-Path $Dist 'extensions'
     New-Item -ItemType Directory -Force -Path $Artifacts, $target | Out-Null
 
+    $manifestVersion = ($PackageVersion -split '-')[0]
+
     foreach ($browser in 'firefox', 'chrome') {
         $staging = Join-Path $target $browser
         Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue
         New-Item -ItemType Directory -Force -Path $staging | Out-Null
 
         Copy-Item (Join-Path $source 'shared') (Join-Path $staging 'shared') -Recurse -Force
-        Copy-Item (Join-Path $source "$browser\*") $staging -Recurse -Force
+        Copy-Item (Join-Path (Join-Path $source $browser) '*') $staging -Recurse -Force
         Copy-Item (Join-Path $source 'README.md') $staging -Force
 
         $manifestPath = Join-Path $staging 'manifest.json'
         $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
-        $manifest.version = ($PackageVersion -split '-')[0]
+        $manifest.version = $manifestVersion
         $manifest | ConvertTo-Json -Depth 10 | Set-Content $manifestPath -Encoding utf8
 
-        $package = Join-Path $Artifacts "RouteShield-Extension-$browser-$PackageVersion.zip"
-        Remove-Item $package -Force -ErrorAction SilentlyContinue
-        Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $package -CompressionLevel Optimal
+        $extension = if ($browser -eq 'firefox') { 'xpi' } else { 'zip' }
+        $package = Join-Path $Artifacts "RouteShield-Extension-$browser-$PackageVersion.$extension"
+
+        if ($browser -eq 'firefox') {
+            Test-FirefoxAddon $staging
+        }
+
+        New-ExtensionArchive -Source $staging -Destination $package
         Write-Host "  $package"
+
+        # The installable file also sits beside the app, where "Open extension folder" leads.
+        Copy-Item $package (Join-Path $target "RouteShield-$browser.$extension") -Force
     }
 }
 
@@ -310,7 +379,7 @@ function Compress-Package {
     $hash = (Get-FileHash $package -Algorithm SHA256).Hash.ToLowerInvariant()
     Set-Content -Path "$package.sha256" -Value "$hash  $(Split-Path $package -Leaf)" -Encoding ascii
 
-    Get-ChildItem $Artifacts -Filter 'RouteShield-Extension-*.zip' | ForEach-Object {
+    Get-ChildItem $Artifacts -File | Where-Object { $_.Name -like 'RouteShield-Extension-*.zip' -or $_.Name -like 'RouteShield-Extension-*.xpi' } | ForEach-Object {
         $extensionHash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
         Set-Content -Path "$($_.FullName).sha256" -Value "$extensionHash  $($_.Name)" -Encoding ascii
     }

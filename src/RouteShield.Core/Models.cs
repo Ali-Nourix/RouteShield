@@ -11,6 +11,14 @@ public enum RouteMode
     FullTunnel
 }
 
+/// <summary>Which palette the window draws with; System follows the Windows app colour.</summary>
+public enum AppTheme
+{
+    System,
+    Light,
+    Dark
+}
+
 public enum TunnelState
 {
     Disconnected,
@@ -51,6 +59,9 @@ public abstract class Observable : INotifyPropertyChanged
 
 public sealed class VpnProfile : Observable
 {
+    /// <summary>The format name of a synthesised profile that stands for a whole subscription.</summary>
+    public const string AutomaticFormat = "Automatic";
+
     private string _name = "New profile";
     private string _format = "Unknown";
     private string _configText = string.Empty;
@@ -59,6 +70,33 @@ public sealed class VpnProfile : Observable
     public Guid Id { get; set; } = Guid.NewGuid();
 
     public Guid? SubscriptionId { get; set; }
+
+    /// <summary>
+    /// True for the "fastest of this subscription" entry. It has no configuration of its own:
+    /// the core is handed every node of the subscription and picks among them.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsAutomatic => Format == AutomaticFormat;
+
+    /// <summary>
+    /// Builds the automatic entry for a subscription. The id is derived from the subscription's,
+    /// so the selection survives a restart although the entry itself is never saved.
+    /// </summary>
+    public static VpnProfile AutomaticFor(VpnSubscription subscription) => new()
+    {
+        Id = AutomaticId(subscription.Id),
+        SubscriptionId = subscription.Id,
+        Name = $"Fastest of {subscription.Name}",
+        Format = AutomaticFormat
+    };
+
+    public static Guid AutomaticId(Guid subscriptionId)
+    {
+        var bytes = subscriptionId.ToByteArray();
+        bytes[0] ^= 0xA5;
+        bytes[15] ^= 0x5A;
+        return new Guid(bytes);
+    }
 
     public string Name
     {
@@ -250,4 +288,13 @@ public sealed class AppSettings
     public int BrowserBridgePort { get; set; } = 47831;
 
     public bool FirstRun { get; set; } = true;
+
+    public AppTheme Theme { get; set; } = AppTheme.System;
+
+    /// <summary>
+    /// Splits every TLS handshake to the proxy server across several TCP segments and TLS
+    /// records, so a firewall that reads the server name from the first packet does not see
+    /// it whole. Off by default: it costs a little on every new connection.
+    /// </summary>
+    public bool TlsFragment { get; set; }
 }

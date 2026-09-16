@@ -60,21 +60,21 @@
         </Grid>
 
         <Border Grid.Row="2" Margin="0,16,0,0" Padding="16,12" CornerRadius="{StaticResource RadiusMd}"
-                Background="{StaticResource TextBrush}">
+                Background="{DynamicResource TextBrush}">
             <ScrollViewer x:Name="LogScroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                 <ItemsControl ItemsSource="{Binding VisibleLog}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                 <TextBlock FontFamily="{StaticResource MonoFont}" FontSize="12"
-                                           Foreground="{StaticResource Neutral500Brush}"
+                                           Foreground="{DynamicResource Neutral500Brush}"
                                            Text="{Binding Timestamp, StringFormat=HH\\:mm\\:ss.fff}" />
                                 <TextBlock Margin="14,0,0,0" Width="96" FontFamily="{StaticResource HeadingFont}"
                                            FontSize="10" VerticalAlignment="Center"
-                                           Foreground="{StaticResource Accent400Brush}"
+                                           Foreground="{DynamicResource AccentOnInkBrush}"
                                            Text="{Binding Category, Converter={StaticResource Tracked}}" />
                                 <TextBlock FontFamily="{StaticResource MonoFont}" FontSize="12" TextWrapping="Wrap"
-                                           Foreground="{StaticResource Neutral200Brush}" Text="{Binding Message}" />
+                                           Foreground="{DynamicResource Neutral200Brush}" Text="{Binding Message}" />
                             </StackPanel>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>

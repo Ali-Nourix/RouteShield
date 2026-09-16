@@ -31,6 +31,10 @@ public sealed class TunnelController : IAsyncDisposable
     private readonly NetworkProbe _probe = new();
     private readonly TrafficMeter _traffic = new();
     private readonly SemaphoreSlim _transition = new(1, 1);
+    private readonly HttpClient _control = new() { Timeout = TimeSpan.FromSeconds(4) };
+
+    /// <summary>The port each bridge route listened on last time, asked for again on the next start.</summary>
+    private readonly Dictionary<(BridgeKind Kind, Guid? ProfileId), int> _lastBridgePorts = [];
 
     private TunnelSession? _session;
     private CancellationTokenSource? _reconnect;
@@ -49,6 +53,7 @@ public sealed class TunnelController : IAsyncDisposable
 
     private sealed record TunnelSession(
         VpnProfile Profile,
+        ConnectionTarget Target,
         AppSettings Settings,
         IReadOnlyList<AppTarget> Apps,
         IReadOnlyList<VpnProfile> Pinned);
@@ -80,6 +85,9 @@ public sealed class TunnelController : IAsyncDisposable
 
     public VpnProfile? ActiveProfile => _session?.Profile;
 
+    /// <summary>The node an automatic group is carrying traffic over right now; null for a single node.</summary>
+    public string? GroupSelection { get; private set; }
+
     public async Task LoadCoreVersionAsync()
     {
         try
@@ -95,9 +103,9 @@ public sealed class TunnelController : IAsyncDisposable
     }
 
     /// <summary>Builds the configuration and asks the core to check it, without starting anything.</summary>
-    public async Task<string> ValidateAsync(VpnProfile profile, AppSettings settings, IReadOnlyList<AppTarget> apps)
+    public async Task<string> ValidateAsync(ConnectionTarget target, AppSettings settings, IReadOnlyList<AppTarget> apps)
     {
-        var runtime = BuildRuntime(profile, settings, apps, []);
+        var runtime = BuildRuntime(target, settings, apps, []);
         var scratch = Path.Combine(AppPaths.Root, "validate.json");
         AppPaths.Ensure();
         await File.WriteAllTextAsync(scratch, runtime.Json, new UTF8Encoding(false));
@@ -126,6 +134,7 @@ public sealed class TunnelController : IAsyncDisposable
 
     public async Task ConnectAsync(
         VpnProfile profile,
+        ConnectionTarget target,
         AppSettings settings,
         IReadOnlyList<AppTarget> apps,
         IReadOnlyList<VpnProfile> pinned)
@@ -134,7 +143,7 @@ public sealed class TunnelController : IAsyncDisposable
         try
         {
             CancelReconnect();
-            _session = new TunnelSession(profile, settings, apps, pinned);
+            _session = new TunnelSession(profile, target, settings, apps, pinned);
             ReconnectAttempt = 0;
             await StartAsync(_session);
         }
@@ -192,7 +201,7 @@ public sealed class TunnelController : IAsyncDisposable
     {
         Report(TunnelState.Connecting, "Starting sing-box and attaching the TUN adapter");
 
-        var runtime = BuildRuntime(session.Profile, session.Settings, session.Apps, BridgeRoutesFor(session));
+        var runtime = BuildRuntime(session.Target, session.Settings, session.Apps, BridgeRoutesFor(session));
 
         AppPaths.Ensure();
         await File.WriteAllTextAsync(AppPaths.RuntimeConfig, runtime.Json, new UTF8Encoding(false));
@@ -214,6 +223,13 @@ public sealed class TunnelController : IAsyncDisposable
         ConnectedAt = DateTimeOffset.Now;
         ReconnectAttempt = 0;
         Bridges = runtime.Bridges;
+        GroupSelection = runtime.IsAutomatic ? "choosing…" : null;
+
+        foreach (var binding in runtime.Bridges)
+        {
+            _lastBridgePorts[(binding.Kind, binding.ProfileId)] = binding.Port;
+        }
+
         Report(TunnelState.Connected, DescribeRoute(session.Settings, session.Apps.Count));
 
         if (runtime.Bridges.Count > 0)
@@ -301,6 +317,11 @@ public sealed class TunnelController : IAsyncDisposable
 
     private async Task<bool> MeasureOnceAsync(RuntimeConfig runtime, CancellationToken cancellationToken)
     {
+        if (runtime.IsAutomatic)
+        {
+            await RefreshGroupSelectionAsync(runtime, cancellationToken);
+        }
+
         try
         {
             var result = await _probe.RunAsync(runtime.ProxyUri, cancellationToken);
@@ -318,6 +339,39 @@ public sealed class TunnelController : IAsyncDisposable
             AppLog.Write(LogCategory.Network, $"Probe failed: {exception.Message}");
             Changed?.Invoke();
             return false;
+        }
+    }
+
+    /// <summary>Asks the Clash API which member the automatic group is using, so the dashboard can name it.</summary>
+    private async Task RefreshGroupSelectionAsync(RuntimeConfig runtime, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(runtime.ControlUri, $"proxies/{RuntimeConfigBuilder.ProxyTag}"));
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", runtime.ControlSecret);
+
+            using var response = await _control.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return;
+            }
+
+            using var document = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            if (document.RootElement.TryGetProperty("now", out var now) && now.GetString() is { Length: > 0 } tag)
+            {
+                var name = runtime.MemberName(tag);
+                if (name != GroupSelection)
+                {
+                    GroupSelection = name;
+                    AppLog.Write(LogCategory.Network, $"Automatic selection is using \"{name}\"");
+                    Changed?.Invoke();
+                }
+            }
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException
+                                          && !cancellationToken.IsCancellationRequested)
+        {
+            // The selection is a courtesy on the dashboard; a missed read is not a tunnel problem.
         }
     }
 
@@ -429,29 +483,70 @@ public sealed class TunnelController : IAsyncDisposable
         ExitIp = null;
         LatencyMilliseconds = null;
         ProbeFailure = null;
+        GroupSelection = null;
         ThroughputMegabytesPerSecond = 0;
     }
 
-    private static RuntimeConfig BuildRuntime(
-        VpnProfile profile,
+    /// <summary>
+    /// Turns a profile into what the core connects to. A node profile is parsed as itself; an
+    /// automatic profile gathers every node of its subscription that parses, so one broken
+    /// link in a subscription costs one member, not the whole group.
+    /// </summary>
+    public static ConnectionTarget ResolveTarget(VpnProfile profile, IEnumerable<VpnProfile> library)
+    {
+        if (!profile.IsAutomatic)
+        {
+            if (string.IsNullOrWhiteSpace(profile.ConfigText))
+            {
+                throw new InvalidOperationException($"Profile \"{profile.Name}\" has no configuration body.");
+            }
+
+            return ConnectionTarget.Single(TunnelParser.Parse(profile.ConfigText));
+        }
+
+        var members = new List<(string Name, ParsedTunnel Tunnel)>();
+        foreach (var candidate in library.Where(candidate => !candidate.IsAutomatic && candidate.SubscriptionId == profile.SubscriptionId))
+        {
+            try
+            {
+                members.Add((candidate.Name, TunnelParser.Parse(candidate.ConfigText)));
+            }
+            catch (Exception exception) when (exception is FormatException or NotSupportedException or InvalidOperationException)
+            {
+                AppLog.Write(LogCategory.Config, $"\"{candidate.Name}\" left out of the automatic group: {exception.Message}");
+            }
+        }
+
+        if (members.Count == 0)
+        {
+            throw new InvalidOperationException($"\"{profile.Name}\" has no usable node. Refresh the subscription first.");
+        }
+
+        return ConnectionTarget.Automatic(profile.Name, members);
+    }
+
+    private RuntimeConfig BuildRuntime(
+        ConnectionTarget target,
         AppSettings settings,
         IReadOnlyList<AppTarget> apps,
         IReadOnlyList<BridgeRoute> bridges)
     {
-        if (string.IsNullOrWhiteSpace(profile.ConfigText))
-        {
-            throw new InvalidOperationException($"Profile \"{profile.Name}\" has no configuration body.");
-        }
-
-        var parsed = TunnelParser.Parse(profile.ConfigText);
-
-        foreach (var warning in parsed.Warnings)
+        foreach (var warning in target.Tunnels.SelectMany(tunnel => tunnel.Warnings))
         {
             AppLog.Write(LogCategory.Config, warning);
         }
 
-        var runtime = RuntimeConfigBuilder.Build(parsed, settings, apps, bridges);
-        AppLog.Write(LogCategory.Config, $"Profile \"{profile.Name}\" built as {parsed.FormatName}");
+        var preferred = bridges
+            .Select(route => _lastBridgePorts.TryGetValue((route.Kind, route.ProfileId), out var port) ? port : (int?)null)
+            .ToArray();
+
+        var runtime = RuntimeConfigBuilder.Build(target, settings, apps, bridges, PortPlan.Reserve(bridges.Count, preferred));
+
+        AppLog.Write(
+            LogCategory.Config,
+            target.IsAutomatic
+                ? $"\"{target.Name}\" built as an automatic group of {target.Tunnels.Count} nodes"
+                : $"Profile \"{target.Name}\" built as {target.Tunnels[0].FormatName}");
 
         return runtime;
     }
@@ -491,6 +586,7 @@ public sealed class TunnelController : IAsyncDisposable
         CancelReconnect();
         StopProbing();
         _traffic.Dispose();
+        _control.Dispose();
         await _core.DisposeAsync();
 
         if (KillSwitchArmed)

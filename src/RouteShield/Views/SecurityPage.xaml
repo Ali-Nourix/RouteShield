@@ -29,11 +29,11 @@
 
         <ScrollViewer Grid.Row="1" Margin="0,22,0,0" VerticalScrollBarVisibility="Auto">
             <StackPanel>
-                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
+                <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
                     <TextBlock Style="{StaticResource SectionTitle}" Text="Network protection" />
                 </Border>
 
-                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
                     <CheckBox Style="{StaticResource SettingRow}" IsChecked="{Binding AppKillSwitch, Mode=TwoWay}">
                         <StackPanel>
                             <TextBlock Style="{StaticResource SettingName}" Text="Application kill switch" />
@@ -44,7 +44,7 @@
                     </CheckBox>
                 </Border>
 
-                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
                     <CheckBox Style="{StaticResource SettingRow}" IsChecked="{Binding DnsProtection, Mode=TwoWay}">
                         <StackPanel>
                             <TextBlock Style="{StaticResource SettingName}" Text="Secure DNS (answer names inside RouteShield)" />
@@ -55,7 +55,7 @@
                     </CheckBox>
                 </Border>
 
-                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
                     <CheckBox Style="{StaticResource SettingRow}" IsChecked="{Binding Ipv6Protection, Mode=TwoWay}">
                         <StackPanel>
                             <TextBlock Style="{StaticResource SettingName}" Text="Include IPv6 in strict routing" />
@@ -66,7 +66,18 @@
                     </CheckBox>
                 </Border>
 
-                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
+                    <CheckBox Style="{StaticResource SettingRow}" IsChecked="{Binding TlsFragment, Mode=TwoWay}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SettingName}" Text="Fragment TLS handshakes to the server" />
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,3,0,0" MaxWidth="720"
+                                       HorizontalAlignment="Left"
+                                       Text="Splits each handshake with the proxy server across several packets and TLS records, so a firewall that reads the server name from the first packet never sees it whole. Turn on when connections stall or reset right after connecting; it costs a little on every new connection. Takes effect on the next connect." />
+                        </StackPanel>
+                    </CheckBox>
+                </Border>
+
+                <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
                     <CheckBox Style="{StaticResource SettingRow}" IsChecked="{Binding AllowLan, Mode=TwoWay}">
                         <StackPanel>
                             <TextBlock Style="{StaticResource SettingName}" Text="Allow access to private / local networks" />
@@ -85,15 +96,15 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel>
-                        <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
+                        <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
                             <TextBlock Style="{StaticResource SectionTitle}" Text="Reliability" />
                         </Border>
-                        <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                        <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
                             <CheckBox Style="{StaticResource AppCheckBox}" Margin="0,13"
                                       IsChecked="{Binding AutoReconnect, Mode=TwoWay}"
                                       Content="Reconnect automatically with backoff" />
                         </Border>
-                        <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                        <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
                             <CheckBox Style="{StaticResource AppCheckBox}" Margin="0,13"
                                       IsChecked="{Binding AutoConnect, Mode=TwoWay}"
                                       Content="Connect the last profile on launch" />
@@ -101,15 +112,15 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="2">
-                        <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
+                        <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
                             <TextBlock Style="{StaticResource SectionTitle}" Text="Windows integration" />
                         </Border>
-                        <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                        <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
                             <CheckBox Style="{StaticResource AppCheckBox}" Margin="0,13"
                                       IsChecked="{Binding StartWithWindows, Mode=TwoWay}"
                                       Content="Start with Windows" />
                         </Border>
-                        <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                        <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
                             <CheckBox Style="{StaticResource AppCheckBox}" Margin="0,13"
                                       IsChecked="{Binding CloseToTray, Mode=TwoWay}"
                                       Content="Minimise to the notification area" />
@@ -117,11 +128,43 @@
                     </StackPanel>
                 </Grid>
 
-                <Border Margin="0,26,0,0" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
+                <Border Margin="0,26,0,0" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="Appearance" />
+                </Border>
+
+                <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1" Padding="0,14">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Style="{StaticResource SettingName}" Text="Theme" />
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,3,0,0" MaxWidth="620"
+                                       HorizontalAlignment="Left"
+                                       Text="Paper or darkness. System follows the Windows app colour and changes with it." />
+                        </StackPanel>
+
+                        <Border Grid.Column="1" Margin="24,0,0,0" CornerRadius="{StaticResource RadiusMd}" BorderThickness="1"
+                                BorderBrush="{DynamicResource DividerBrush}" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton Style="{StaticResource SegmentOption}" Content="System" GroupName="Theme"
+                                             IsChecked="{Binding Theme, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=System}" />
+                                <RadioButton Style="{StaticResource SegmentOption}" Content="Light" GroupName="Theme"
+                                             IsChecked="{Binding Theme, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=Light}" />
+                                <RadioButton Style="{StaticResource SegmentOption}" Content="Dark" GroupName="Theme"
+                                             IsChecked="{Binding Theme, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=Dark}" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <Border Margin="0,26,0,0" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
                     <TextBlock Style="{StaticResource SectionTitle}" Text="Browser extension" />
                 </Border>
 
-                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
                     <CheckBox Style="{StaticResource SettingRow}" IsChecked="{Binding BrowserBridgeEnabled, Mode=TwoWay}">
                         <StackPanel>
                             <TextBlock Style="{StaticResource SettingName}" Text="Browser bridge" />
@@ -136,7 +179,7 @@
 
                 <Grid Margin="0,12,0,0">
                     <TextBlock Style="{StaticResource HelpText}" VerticalAlignment="Center" MaxWidth="620" HorizontalAlignment="Left"
-                               Text="Firefox: about:debugging → Load Temporary Add-on, or install the signed build from Releases. Chrome: chrome://extensions → Developer mode → Load unpacked." />
+                               Text="Firefox: open the .xpi from the extensions folder (Developer Edition and Nightly can keep it after setting xpinstall.signatures.required to false), or about:debugging → Load Temporary Add-on for one session. Chrome: chrome://extensions → Developer mode → Load unpacked → the chrome folder." />
                     <Button Style="{StaticResource SecondaryButton}" HorizontalAlignment="Right" VerticalAlignment="Center"
                             Command="{Binding OpenExtensionFolderCommand}" Content="Open extension folder" />
                 </Grid>

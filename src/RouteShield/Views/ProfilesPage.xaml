@@ -15,17 +15,34 @@
 
                 <StackPanel VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Style="{StaticResource RowLabel}" TextTrimming="CharacterEllipsis"
-                                   Text="{Binding Profile.Name}" />
+                        <TextBlock TextTrimming="CharacterEllipsis" Text="{Binding Profile.Name}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource RowLabel}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsAutomatic}" Value="True">
+                                            <Setter Property="FontFamily" Value="{StaticResource MediumFont}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
                         <Border Margin="8,0,0,0" Padding="5,1" CornerRadius="3" VerticalAlignment="Center"
-                                Background="{StaticResource TextBrush}"
+                                Background="{DynamicResource AccentBrush}"
+                                Visibility="{Binding IsAutomatic, Converter={StaticResource Show}}"
+                                ToolTip="The core picks the fastest node of this subscription and fails over on its own">
+                            <TextBlock FontFamily="{StaticResource HeadingFont}" FontSize="8"
+                                       Foreground="{DynamicResource BgBrush}" ui:Typo.Tracked="AUTO" />
+                        </Border>
+                        <Border Margin="8,0,0,0" Padding="5,1" CornerRadius="3" VerticalAlignment="Center"
+                                Background="{DynamicResource TextBrush}"
                                 Visibility="{Binding Profile.BrowserPinned, Converter={StaticResource Show}}"
                                 ToolTip="Offered to the browser extension">
                             <TextBlock FontFamily="{StaticResource HeadingFont}" FontSize="8"
-                                       Foreground="{StaticResource BgBrush}" ui:Typo.Tracked="WEB" />
+                                       Foreground="{DynamicResource BgBrush}" ui:Typo.Tracked="WEB" />
                         </Border>
                     </StackPanel>
-                    <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0" Text="{Binding Profile.Format}" />
+                    <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"
+                               Text="{Binding Detail}" />
                 </StackPanel>
 
                 <Border Grid.Column="1" Style="{StaticResource Chip}" Margin="12,0,0,0"
@@ -34,13 +51,13 @@
                                Text="{Binding LatencyText, Converter={StaticResource Tracked}}">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource BaseText}">
-                                <Setter Property="Foreground" Value="{StaticResource Neutral600Brush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Neutral600Brush}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding LatencyState}" Value="Measured">
-                                        <Setter Property="Foreground" Value="{StaticResource Accent700Brush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding LatencyState}" Value="Testing">
-                                        <Setter Property="Foreground" Value="{StaticResource Neutral500Brush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource Neutral500Brush}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -56,7 +73,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="GroupItem">
                         <StackPanel>
-                            <Border Margin="0,18,0,0" Padding="0,0,0,8" BorderBrush="{StaticResource DividerBrush}"
+                            <Border Margin="0,18,0,0" Padding="0,0,0,8" BorderBrush="{DynamicResource DividerBrush}"
                                     BorderThickness="0,0,0,2">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -69,7 +86,7 @@
                                             <TextBlock Style="{StaticResource SectionTitle}" Text="{Binding Name.Title}" />
                                             <TextBlock Style="{StaticResource Caption}" Margin="10,0,0,0"
                                                        VerticalAlignment="Bottom">
-                                                <Run Text="{Binding ItemCount, Mode=OneWay}" /><Run Text=" saved" />
+                                                <Run Text="{Binding ItemCount, Mode=OneWay}" /><Run Text=" entries" />
                                             </TextBlock>
                                         </StackPanel>
                                         <TextBlock Margin="0,3,0,0" TextTrimming="CharacterEllipsis"
@@ -79,7 +96,7 @@
                                                 <Style TargetType="TextBlock" BasedOn="{StaticResource Caption}">
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding Name.Subscription.HasError}" Value="True">
-                                                            <Setter Property="Foreground" Value="{StaticResource Accent700Brush}" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
@@ -104,6 +121,37 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- The editor column and the gap before it collapse to nothing while the editor is closed. -->
+        <Style x:Key="EditorColumn" TargetType="ColumnDefinition">
+            <Setter Property="Width" Value="0" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsEditorOpen}" Value="True">
+                    <Setter Property="Width" Value="1.15*" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="EditorGap" TargetType="ColumnDefinition">
+            <Setter Property="Width" Value="0" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsEditorOpen}" Value="True">
+                    <Setter Property="Width" Value="28" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- The header button that opens and closes the editor reads as pressed while it is open. -->
+        <Style x:Key="EditorToggle" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Content" Value="Open editor" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsEditorOpen}" Value="True">
+                    <Setter Property="Content" Value="Close editor" />
+                    <Setter Property="Background" Value="{DynamicResource TextBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource TextBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource BgBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </UserControl.Resources>
 
     <Grid Margin="30,24,30,28">
@@ -116,8 +164,9 @@
         <views:PageHeader Kicker="LIBRARY" Title="Profiles &amp; subscriptions">
             <views:PageHeader.Actions>
                 <StackPanel Orientation="Horizontal">
-                    <Button Style="{StaticResource SecondaryButton}" Command="{Binding AddSubscriptionCommand}"
-                            Content="Add subscription" />
+                    <Button Style="{StaticResource EditorToggle}" Command="{Binding ToggleEditorCommand}" />
+                    <Button Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"
+                            Command="{Binding AddSubscriptionCommand}" Content="Add subscription" />
                     <Button Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"
                             Command="{Binding ImportProfileCommand}" Content="Import file" />
                     <Button Style="{StaticResource PrimaryButton}" Margin="8,0,0,0"
@@ -130,8 +179,8 @@
         <Grid Grid.Row="1" Margin="0,18,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="28" />
-                <ColumnDefinition Width="1.15*" />
+                <ColumnDefinition Style="{StaticResource EditorGap}" />
+                <ColumnDefinition Style="{StaticResource EditorColumn}" />
             </Grid.ColumnDefinitions>
 
             <Grid>
@@ -144,7 +193,7 @@
                             Visibility="{Binding IsTestingLatency, Converter={StaticResource Show}}" />
 
                     <Border Margin="10,0,0,0" CornerRadius="{StaticResource RadiusMd}" BorderThickness="1"
-                            BorderBrush="{StaticResource DividerBrush}" VerticalAlignment="Center">
+                            BorderBrush="{DynamicResource DividerBrush}" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal">
                             <RadioButton Style="{StaticResource SegmentOption}" Content="Name" GroupName="LibrarySort"
                                          IsChecked="{Binding SortByLatency, Converter={StaticResource Not}, Mode=TwoWay}" />
@@ -158,20 +207,22 @@
                            Text="{Binding LibrarySummary}" />
             </Grid>
 
-            <Border Grid.Column="2" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2"
-                    Padding="0,0,0,9" VerticalAlignment="Bottom">
+            <Border Grid.Column="2" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2"
+                    Padding="0,0,0,9" VerticalAlignment="Bottom"
+                    Visibility="{Binding IsEditorOpen, Converter={StaticResource Show}}">
                 <Grid>
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Style="{StaticResource SectionTitle}" Text="Profile editor" />
                         <Border Margin="12,0,0,0" Padding="8,3" VerticalAlignment="Center"
-                                CornerRadius="{StaticResource RadiusXs}" Background="{StaticResource Accent100Brush}">
+                                CornerRadius="{StaticResource RadiusXs}" Background="{DynamicResource AccentTintBrush}">
                             <TextBlock FontFamily="{StaticResource HeadingFont}" FontSize="10"
-                                       Foreground="{StaticResource Accent800Brush}"
+                                       Foreground="{DynamicResource AccentTextStrongBrush}"
                                        Text="{Binding EditorFormat, Converter={StaticResource Tracked}}" />
                         </Border>
                     </StackPanel>
                     <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Right"
-                            Command="{Binding DetectFormatCommand}" Content="Check format" />
+                            Command="{Binding DetectFormatCommand}" Content="Check format"
+                            Visibility="{Binding CanEditSelectedProfile, Converter={StaticResource Show}}" />
                 </Grid>
             </Border>
         </Grid>
@@ -179,14 +230,14 @@
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="28" />
-                <ColumnDefinition Width="1.15*" />
+                <ColumnDefinition Style="{StaticResource EditorGap}" />
+                <ColumnDefinition Style="{StaticResource EditorColumn}" />
             </Grid.ColumnDefinitions>
 
             <!-- ══ Library ══ -->
             <Grid>
                 <TextBlock Style="{StaticResource HelpText}" Margin="0,22,0,0" VerticalAlignment="Top"
-                           Text="Nothing here yet. Paste a share link into the editor, import a file, or add a subscription."
+                           Text="Nothing here yet. Add a subscription, import a file, or open the editor and paste a share link."
                            Visibility="{Binding Profiles.Count, Converter={StaticResource ShowIfEmpty}}" />
 
                 <ListBox Style="{StaticResource AppListBox}" Margin="0,0,0,0"
@@ -202,16 +253,17 @@
             </Grid>
 
             <!-- ══ Editor ══ -->
-            <DockPanel Grid.Column="2" Margin="0,16,0,0">
-                <StackPanel DockPanel.Dock="Top">
+            <DockPanel Grid.Column="2" Margin="0,16,0,0"
+                       Visibility="{Binding IsEditorOpen, Converter={StaticResource Show}}">
+                <StackPanel DockPanel.Dock="Top" IsEnabled="{Binding CanEditSelectedProfile}">
                     <TextBlock Style="{StaticResource FieldLabel}" ui:Typo.Tracked="PROFILE NAME" />
                     <TextBox Style="{StaticResource AppTextBox}" Tag="Frankfurt"
                              Text="{Binding EditorName, UpdateSourceTrigger=PropertyChanged}" />
                 </StackPanel>
 
                 <StackPanel DockPanel.Dock="Bottom" Margin="0,14,0,0">
-                    <Border Padding="14,12" CornerRadius="{StaticResource RadiusMd}" Background="{StaticResource SurfaceBrush}"
-                            IsEnabled="{Binding HasSelectedProfile}">
+                    <Border Padding="14,12" CornerRadius="{StaticResource RadiusMd}" Background="{DynamicResource SurfaceBrush}"
+                            IsEnabled="{Binding CanEditSelectedProfile}">
                         <CheckBox Style="{StaticResource AppCheckBox}" IsChecked="{Binding SelectedProfilePinned, Mode=TwoWay}">
                             <StackPanel>
                                 <TextBlock FontFamily="{StaticResource MediumFont}" FontSize="13.5"
@@ -236,7 +288,8 @@
                 </StackPanel>
 
                 <TextBox Style="{StaticResource CodeTextBox}" Margin="0,14,0,0"
-                         Tag="vless://… · a WireGuard .conf · a sing-box configuration"
+                         Tag="vless://… · hysteria2://… · a WireGuard .conf · a sing-box configuration"
+                         IsReadOnly="{Binding CanEditSelectedProfile, Converter={StaticResource Not}}"
                          Text="{Binding EditorConfig, UpdateSourceTrigger=PropertyChanged}" />
             </DockPanel>
         </Grid>

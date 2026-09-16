@@ -8,12 +8,12 @@
         <Style x:Key="MetaCaption" TargetType="TextBlock" BasedOn="{StaticResource BaseText}">
             <Setter Property="FontFamily" Value="{StaticResource HeadingFont}" />
             <Setter Property="FontSize" Value="9" />
-            <Setter Property="Foreground" Value="{StaticResource Neutral500Brush}" />
+            <Setter Property="Foreground" Value="{DynamicResource Neutral500Brush}" />
         </Style>
         <Style x:Key="MetaValue" TargetType="TextBlock" BasedOn="{StaticResource BaseText}">
             <Setter Property="FontSize" Value="12.5" />
             <Setter Property="Margin" Value="0,6,0,0" />
-            <Setter Property="Foreground" Value="{StaticResource BgBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource BgBrush}" />
             <Setter Property="TextTrimming" Value="CharacterEllipsis" />
         </Style>
     </UserControl.Resources>
@@ -29,11 +29,11 @@
         <views:PageHeader Kicker="CONTROL CENTRE" Title="Connection">
             <views:PageHeader.Actions>
                 <Border Padding="10,5" CornerRadius="{StaticResource RadiusXs}"
-                        BorderBrush="{StaticResource DividerBrush}" BorderThickness="1">
+                        BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1">
                     <StackPanel Orientation="Horizontal">
-                        <Border Width="8" Height="8" CornerRadius="2" VerticalAlignment="Center" Background="{StaticResource TextBrush}"
+                        <Border Width="8" Height="8" CornerRadius="2" VerticalAlignment="Center" Background="{DynamicResource TextBrush}"
                                 Visibility="{Binding IsAdministrator, Converter={StaticResource Show}}" />
-                        <Border Width="8" Height="8" CornerRadius="2" VerticalAlignment="Center" Background="{StaticResource Neutral400Brush}"
+                        <Border Width="8" Height="8" CornerRadius="2" VerticalAlignment="Center" Background="{DynamicResource Neutral400Brush}"
                                 Visibility="{Binding IsAdministrator, Converter={StaticResource Hide}}" />
                         <TextBlock Margin="8,0,0,0" FontSize="11.5" VerticalAlignment="Center">
                             <TextBlock.Style>
@@ -63,9 +63,9 @@
 
                 <StackPanel VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
-                        <Border Width="14" Height="14" CornerRadius="4" VerticalAlignment="Center" Background="{StaticResource AccentBrush}" />
+                        <Border Width="14" Height="14" CornerRadius="4" VerticalAlignment="Center" Background="{DynamicResource AccentBrush}" />
                         <TextBlock Style="{StaticResource StatusHeadline}" Margin="12,0,0,0"
-                                   Foreground="{StaticResource BgBrush}" Text="{Binding StateWord}" />
+                                   Foreground="{DynamicResource BgBrush}" Text="{Binding StateWord}" />
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
@@ -74,12 +74,12 @@
                             <TextBlock Style="{StaticResource MetaValue}" MaxWidth="200"
                                        Text="{Binding SelectedProfileLabel}" />
                         </StackPanel>
-                        <Border Width="1" Margin="22,2" Background="{StaticResource Neutral700Brush}" />
+                        <Border Width="1" Margin="22,2" Background="{DynamicResource Neutral700Brush}" />
                         <StackPanel>
                             <TextBlock Style="{StaticResource MetaCaption}" ui:Typo.Tracked="ROUTING" />
                             <TextBlock Style="{StaticResource MetaValue}" Text="{Binding RouteModeText}" />
                         </StackPanel>
-                        <Border Width="1" Margin="22,2" Background="{StaticResource Neutral700Brush}" />
+                        <Border Width="1" Margin="22,2" Background="{DynamicResource Neutral700Brush}" />
                         <StackPanel>
                             <TextBlock Style="{StaticResource MetaCaption}" ui:Typo.Tracked="EXIT IP" />
                             <TextBlock Style="{StaticResource MetaValue}" Text="{Binding ExitIpText}" />
@@ -101,13 +101,13 @@
                         </Grid>
                     </Button>
                     <TextBlock Style="{StaticResource Caption}" Margin="0,10,0,0"
-                               Foreground="{StaticResource Neutral500Brush}"
+                               Foreground="{DynamicResource Neutral500Brush}"
                                Text="{Binding CoreVersionText}" />
                     <TextBlock Style="{StaticResource Caption}" Margin="0,3,0,0" TextWrapping="Wrap"
-                               Foreground="{StaticResource Neutral500Brush}"
+                               Foreground="{DynamicResource Neutral500Brush}"
                                Text="{Binding BridgeSummary}" />
                     <TextBlock Style="{StaticResource Caption}" Margin="0,3,0,0" TextWrapping="Wrap"
-                               Foreground="{StaticResource Accent400Brush}"
+                               Foreground="{DynamicResource AccentOnInkBrush}"
                                Text="{Binding ProbeFailure}"
                                Visibility="{Binding ProbeFailure, Converter={StaticResource ShowIfPresent}}" />
                 </StackPanel>
@@ -128,13 +128,13 @@
                         <Border Width="14" Height="14" CornerRadius="4" VerticalAlignment="Center" BorderThickness="3">
                             <Border.Style>
                                 <Style TargetType="Border">
-                                    <Setter Property="BorderBrush" Value="{StaticResource Neutral500Brush}" />
+                                    <Setter Property="BorderBrush" Value="{DynamicResource Neutral500Brush}" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding State}" Value="Failed">
-                                            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding IsTransitioning}" Value="True">
-                                            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -158,7 +158,7 @@
                             <TextBlock Style="{StaticResource FieldLabel}" ui:Typo.Tracked="ACTIVE PROFILE" />
                             <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboItem}"
                                       Tag="No profile yet"
-                                      ItemsSource="{Binding Profiles}" DisplayMemberPath="Name"
+                                      ItemsSource="{Binding ConnectTargets}" DisplayMemberPath="Name"
                                       SelectedItem="{Binding SelectedProfile, Mode=TwoWay}" />
                         </StackPanel>
 
@@ -183,8 +183,8 @@
                             Visibility="{Binding State, Converter={StaticResource ShowForState}, ConverterParameter=Disconnected|Failed}">
                         <StackPanel>
                             <TextBlock FontFamily="{StaticResource HeadingFont}" FontSize="26"
-                                       Foreground="{StaticResource BgBrush}" ui:Typo.Tracked="CONNECT" />
-                            <TextBlock Margin="0,8,0,0" FontSize="12" Foreground="{StaticResource BgBrush}"
+                                       Foreground="{DynamicResource BgBrush}" ui:Typo.Tracked="CONNECT" />
+                            <TextBlock Margin="0,8,0,0" FontSize="12" Foreground="{DynamicResource BgBrush}"
                                        Text="Start the protected tunnel" />
                         </StackPanel>
                     </Button>
@@ -194,7 +194,7 @@
                             Visibility="{Binding State, Converter={StaticResource ShowForState}, ConverterParameter=Connecting|Reconnecting|Disconnecting}">
                         <StackPanel>
                             <TextBlock FontFamily="{StaticResource HeadingFont}" FontSize="22" ui:Typo.Tracked="CANCEL" />
-                            <TextBlock Margin="0,8,0,0" FontSize="12" Foreground="{StaticResource Neutral700Brush}"
+                            <TextBlock Margin="0,8,0,0" FontSize="12" Foreground="{DynamicResource Neutral700Brush}"
                                        Text="Stop and release the adapter" />
                         </StackPanel>
                     </Button>
@@ -219,14 +219,14 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Border BorderBrush="{StaticResource TextBrush}" BorderThickness="0,2,0,0" Padding="0,12">
+            <Border BorderBrush="{DynamicResource TextBrush}" BorderThickness="0,2,0,0" Padding="0,12">
                 <StackPanel>
                     <TextBlock Style="{StaticResource Kicker}" ui:Typo.Tracked="UPTIME" />
                     <TextBlock Style="{StaticResource StatFigure}" Text="{Binding UptimeText}" />
                 </StackPanel>
             </Border>
 
-            <Border Grid.Column="1" Margin="24,0,0,0" BorderBrush="{StaticResource TextBrush}"
+            <Border Grid.Column="1" Margin="24,0,0,0" BorderBrush="{DynamicResource TextBrush}"
                     BorderThickness="0,2,0,0" Padding="24,12,0,12">
                 <StackPanel>
                     <TextBlock Style="{StaticResource Kicker}" ui:Typo.Tracked="HTTP LATENCY" />
@@ -238,7 +238,7 @@
                 </StackPanel>
             </Border>
 
-            <Border Grid.Column="2" Margin="24,0,0,0" BorderBrush="{StaticResource TextBrush}"
+            <Border Grid.Column="2" Margin="24,0,0,0" BorderBrush="{DynamicResource TextBrush}"
                     BorderThickness="0,2,0,0" Padding="24,12,0,12">
                 <StackPanel>
                     <TextBlock Style="{StaticResource Kicker}" ui:Typo.Tracked="THROUGHPUT" />
@@ -260,7 +260,7 @@
             </Grid.ColumnDefinitions>
 
             <DockPanel>
-                <Border DockPanel.Dock="Top" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2"
+                <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2"
                         Padding="0,0,0,9">
                     <Grid>
                         <TextBlock Style="{StaticResource SectionTitle}" VerticalAlignment="Bottom"
@@ -278,13 +278,13 @@
                     <ItemsControl ItemsSource="{Binding Apps}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1"
+                                <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1"
                                         Padding="0,11">
                                     <Grid>
                                         <TextBlock Style="{StaticResource RowLabel}" TextTrimming="CharacterEllipsis"
                                                    Text="{Binding DisplayName}" ToolTip="{Binding Path}" />
                                         <TextBlock Style="{StaticResource StateWord}" HorizontalAlignment="Right"
-                                                   Foreground="{StaticResource Accent700Brush}"
+                                                   Foreground="{DynamicResource AccentTextBrush}"
                                                    Text="{Binding DataContext.AppStateWord, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource Tracked}}" />
                                     </Grid>
                                 </Border>
@@ -295,7 +295,7 @@
             </DockPanel>
 
             <StackPanel Grid.Column="2">
-                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
+                <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
                     <TextBlock Style="{StaticResource SectionTitle}" Text="Protection layers" />
                 </Border>
 

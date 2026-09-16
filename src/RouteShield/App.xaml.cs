@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Threading;
+using RouteShield.Ui;
 using RouteShield.Views;
 
 namespace RouteShield;
@@ -25,6 +26,10 @@ public partial class App : Application
         }
 
         DispatcherUnhandledException += OnUnhandledException;
+
+        // The palette is chosen before the first window exists, so a dark desktop never sees
+        // a light flash while the full settings file is still being read.
+        ThemeManager.Apply(SettingsStore.PeekTheme());
 
         var startMinimised = args.Args.Contains("--autostart", StringComparer.OrdinalIgnoreCase);
         var shell = new ShellWindow(startMinimised);

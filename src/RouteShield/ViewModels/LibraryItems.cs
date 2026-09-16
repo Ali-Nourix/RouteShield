@@ -1,4 +1,5 @@
 using RouteShield.Services;
+using RouteShield.Tunnels;
 
 namespace RouteShield.ViewModels;
 
@@ -45,15 +46,29 @@ public sealed class ProfileItem : Observable
     private int? _latencyMilliseconds;
     private string? _failure;
 
-    public ProfileItem(VpnProfile profile, LibrarySection section)
+    public ProfileItem(VpnProfile profile, LibrarySection section, int memberCount = 0)
     {
         Profile = profile;
         Section = section;
+        MemberCount = memberCount;
     }
 
     public VpnProfile Profile { get; }
 
     public LibrarySection Section { get; }
+
+    /// <summary>For an automatic entry, how many nodes it stands for.</summary>
+    public int MemberCount { get; }
+
+    public bool IsAutomatic => Profile.IsAutomatic;
+
+    /// <summary>Automatic entries lead their section whichever way the list is sorted.</summary>
+    public int Rank => IsAutomatic ? 0 : 1;
+
+    /// <summary>The second line of the row: the format, or what an automatic entry does.</summary>
+    public string Detail => IsAutomatic
+        ? $"Fastest of {MemberCount} nodes · re-tested every {RuntimeConfigBuilder.GroupTestInterval.TrimEnd('m')} min · fails over on its own"
+        : Profile.Format;
 
     public LatencyState LatencyState
     {

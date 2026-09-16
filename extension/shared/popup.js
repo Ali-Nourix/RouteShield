@@ -42,6 +42,7 @@ function renderStatus(state) {
 
   elements.status.classList.add("chip-live");
   elements.statusText.textContent = state.active ? `Connected · ${state.active}` : "Connected";
+  elements.status.title = elements.statusText.textContent;
 }
 
 function choice({ label, hint, tag, assignment, checked, disabled }) {
@@ -82,7 +83,7 @@ function choice({ label, hint, tag, assignment, checked, disabled }) {
 }
 
 function render(context) {
-  const { state, assignment, mode, subject, assignable = true } = context;
+  const { state, assignment, mode, subject, assignable = true, related = 0 } = context;
 
   renderStatus(state);
   elements.subjectKicker.textContent = mode === "site" ? "THIS SITE" : "THIS TAB";
@@ -122,16 +123,26 @@ function render(context) {
     );
   }
 
+  const held = assignment?.kind === "profile" && !RouteShieldBridge.resolveRoute(state, assignment);
+  const scope = mode === "site" ? "site" : "tab";
+
   elements.note.className = "note";
-  if (!state.reachable) {
+  if (held) {
+    elements.note.classList.add("warn");
+    elements.note.textContent = state.reachable
+      ? `The tunnel is down. Requests from this ${scope} are held, not sent unprotected, until it is back.`
+      : `RouteShield is not running. Requests from this ${scope} are held, not sent unprotected, until it is.`;
+  } else if (!state.reachable) {
     elements.note.classList.add("warn");
     elements.note.textContent = "Start RouteShield to make choices here. Existing choices are kept.";
   } else if (!state.connected) {
     elements.note.textContent = "Choices apply as soon as the tunnel is up.";
+  } else if (mode === "site" && related > 0) {
+    elements.note.textContent = `Covers every tab on this site and ${related} domain${related === 1 ? "" : "s"} it loads from — video, images and scripts included.`;
   } else if (profiles.length <= 1) {
     elements.note.textContent = "Pin more profiles in RouteShield → Profiles to offer them here.";
   } else if (mode === "site") {
-    elements.note.textContent = "Chrome routes by site, not by tab: the choice covers every tab on this site.";
+    elements.note.textContent = "Chrome routes by site, not by tab: the choice covers every tab on this site and the domains it loads from.";
   } else {
     elements.note.textContent = "";
   }

@@ -1,24 +1,51 @@
 # Modernist — the RouteShield design system
 
-Everything visual in the application resolves back to `src/RouteShield/Theme/Tokens.xaml`.
-Component styles live beside it in `Controls.xaml`. Change a token there and the whole
-interface follows; nothing should hard-code a colour, a size, or a font.
+Everything visual in the application resolves back to three dictionaries in
+`src/RouteShield/Theme/`: the colour palettes (`Palette.Light.xaml`, `Palette.Dark.xaml`), the
+type, shape and space tokens (`Tokens.xaml`), and the component styles (`Controls.xaml`).
+Change a token there and the whole interface follows; nothing should hard-code a colour, a
+size, or a font.
 
 ## Ground
 
-| Role | Value | Where it appears |
-| --- | --- | --- |
-| Background | `#F3F2F2` | The page, and text reversed out of the ink card |
-| Surface | `#EAE9E9` | Inputs, raised cards, the mode bar |
-| Text (ink) | `#201E1D` | Copy, rules, the connected card, the selected nav item |
-| Accent | `#EC3013` | The connect button, live state, the armed kill switch, focus |
-| Accent 2 | `#E15B47` | Reserved for a second signal |
+| Role | Light | Dark | Where it appears |
+| --- | --- | --- | --- |
+| Background | `#F3F2F2` | `#151413` | The page, and text reversed out of the ink card |
+| Surface | `#EAE9E9` | `#1E1C1B` | Inputs, raised cards, the mode bar |
+| Text (ink) | `#201E1D` | `#F3F2F2` | Copy, rules, the connected card, the selected nav item |
+| Accent | `#EC3013` | `#FF563C` | The connect button, live state, the armed kill switch, focus |
+| Accent 2 | `#E15B47` | `#E15B47` | Reserved for a second signal |
 
 Two tonal ramps — neutral and accent, steps 100 to 900 — sit on one shared lightness scale, so
-the same step of either role carries the same visual weight.
+the same step of either role carries the same visual weight. The dark palette reads the neutral
+ramp from the other end, so a step that was "muted on paper" is "muted on darkness" at the
+same distance from the ground.
 
-Rules and borders are drawn as ink at 40% rather than as a fixed grey, so a divider reads the
-same over paper and over a raised surface.
+Roles that depend on which surface they sit on have semantic brushes rather than ramp steps:
+`AccentTintBrush` (a wash behind a small label), `AccentTextBrush` and `AccentTextStrongBrush`
+(accent text on the ground), `AccentOnInkBrush` (accent text on the ink card, which is paper in
+dark mode), `AccentDeepBrush` and `AccentDeeperBrush` (the primary button under the pointer and
+pressed). Views use these, never `Accent700Brush` directly.
+
+Rules and borders are drawn as ink at 12% (14% in the dark palette) rather than as a fixed
+grey, so a divider reads the same over paper and over a raised surface. Hover is ink at 7%,
+pressed at 14%.
+
+### Switching palettes
+
+Every brush in the interface is referenced with `DynamicResource`. `Ui/ThemeManager` replaces the
+palette dictionary in the application's merged resources, and every open window re-colours in
+place. *System* reads `AppsUseLightTheme` from the registry and follows
+`SystemEvents.UserPreferenceChanged`; the palette is chosen before the first window opens so a
+dark desktop never sees a light flash.
+
+### Text colour is inherited
+
+The base text style sets no foreground. Text takes its colour from the window, card or control
+that contains it, which is what lets a label turn light the moment the control behind it fills
+with ink. Templates that must show a string on a filled control (`NavItem`, `SegmentOption`)
+draw it with a `TextBlock` bound to the control's own `Foreground`, not with a
+`ContentPresenter`.
 
 ## Type
 
@@ -39,8 +66,8 @@ spacing with hair spaces; it is only ever applied to short decorative labels, ne
 
 ## Shape and space
 
-Radii are 8 (small), 10 (medium, the default for buttons and inputs), 14 (cards) and a pill for
-state tags. Spacing steps are 4, 8, 12, 16, 24 and 32.
+Radii are 5 (tags and chips), 8 (small), 10 (medium, the default for buttons and inputs) and
+14 (cards). Nothing rounds into a pill. Spacing steps are 4, 8, 12, 16, 24 and 32.
 
 Elevation is used sparingly: only dialogs, popups and the process picker carry a shadow. On the
 page, hierarchy comes from the ground colour and from the rule weight — 2px under a section
@@ -54,9 +81,12 @@ heading, 1px between the rows beneath it.
 - **Inputs.** Surface ground, hairline border, accent on focus, placeholder from `Tag`.
 - **Checkboxes** are 16×16 with a 5px radius: ink-filled with a light tick when on, a neutral
   hairline when off. **Radios** are a 16px ring that fills with accent.
-- **Navigation** items carry a two-digit ordinal and turn into an ink pill when selected.
-- **State tags** are pills: ink for on, accent for a state that carries risk, a hairline outline
-  for off.
+- **Navigation** items carry a two-digit ordinal and fill with ink when selected; the label
+  goes to the ground colour.
+- **State tags** are rounded rectangles: ink for on, accent for a state that carries risk, a
+  hairline outline for off.
+- **Segmented switches** (Name | Latency, System | Light | Dark) sit inside one hairline frame;
+  the chosen option fills with ink.
 
 ## Screens
 

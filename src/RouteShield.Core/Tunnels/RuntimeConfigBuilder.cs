@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -35,6 +34,18 @@ public static class RuntimeConfigBuilder
     private const string FakeIpv6Range = "fc00::/18";
     private const int TunnelMtu = 9000;
 
+    /// <summary>How an automatic group measures its members: the same 204 endpoint the latency test uses.</summary>
+    public const string GroupTestUrl = LatencyProbeConfigBuilder.TestUrl;
+    public const string GroupTestInterval = "3m";
+    public const string GroupIdleTimeout = "30m";
+    public const int GroupToleranceMilliseconds = 50;
+
+    /// <summary>Protocols that run over QUIC, where a TCP-level TLS fragment has nothing to split.</summary>
+    private static readonly HashSet<string> QuicProtocols = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "hysteria", "hysteria2", "tuic", "wireguard"
+    };
+
     /// <summary>Names that only ever mean something on the local network.</summary>
     private static readonly string[] LocalNameSuffixes =
         [".local", ".lan", ".home", ".internal", ".home.arpa", ".localdomain"];
@@ -49,20 +60,19 @@ public static class RuntimeConfigBuilder
         ParsedTunnel parsed,
         AppSettings settings,
         IEnumerable<AppTarget> apps,
-        IReadOnlyList<BridgeRoute> bridges)
-    {
-        var ports = ReserveLoopbackPorts(2 + bridges.Count);
-        var plan = new PortPlan(
-            ports[0],
-            ports[1],
-            Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant(),
-            ports.Skip(2).ToArray());
-
-        return Build(parsed, settings, apps, bridges, plan);
-    }
+        IReadOnlyList<BridgeRoute> bridges) =>
+        Build(ConnectionTarget.Single(parsed), settings, apps, bridges, PortPlan.Reserve(bridges.Count));
 
     public static RuntimeConfig Build(
         ParsedTunnel parsed,
+        AppSettings settings,
+        IEnumerable<AppTarget> apps,
+        IReadOnlyList<BridgeRoute> bridges,
+        PortPlan ports) =>
+        Build(ConnectionTarget.Single(parsed), settings, apps, bridges, ports);
+
+    public static RuntimeConfig Build(
+        ConnectionTarget target,
         AppSettings settings,
         IEnumerable<AppTarget> apps,
         IReadOnlyList<BridgeRoute> bridges,
@@ -82,7 +92,7 @@ public static class RuntimeConfigBuilder
 
         var outbounds = new JsonArray();
         var endpoints = new JsonArray();
-        Place(parsed, ProxyTag, outbounds, endpoints);
+        var members = PlaceTarget(target, settings, outbounds, endpoints);
 
         var inbounds = BuildInbounds(settings, ports.ProxyPort);
         var rules = BuildLeadingRules(settings);
@@ -104,6 +114,7 @@ public static class RuntimeConfigBuilder
                 Place(
                     route.Tunnel ?? throw new ArgumentException($"Bridge route \"{route.Name}\" has no tunnel.", nameof(bridges)),
                     outboundTag,
+                    settings,
                     outbounds,
                     endpoints);
             }
@@ -147,15 +158,67 @@ public static class RuntimeConfigBuilder
             root["endpoints"] = endpoints;
         }
 
-        return new RuntimeConfig(root.ToJsonString(WriteOptions), ports.ProxyPort, ports.ControlPort, ports.ControlSecret, bindings);
+        return new RuntimeConfig(
+            root.ToJsonString(WriteOptions),
+            ports.ProxyPort,
+            ports.ControlPort,
+            ports.ControlSecret,
+            bindings,
+            members);
+    }
+
+    /// <summary>
+    /// Places what the tunnel connects to under <see cref="ProxyTag"/>. One node is placed as
+    /// itself. Several become an automatic group: each node under its own member tag, and a
+    /// <c>urltest</c> outbound under the proxy tag that keeps measuring them and carries traffic
+    /// over the fastest. It moves on when the chosen node stops answering, and only switches
+    /// for a faster one when the gap is real, so connections are not shuffled for a few ms.
+    /// </summary>
+    private static List<GroupMember> PlaceTarget(ConnectionTarget target, AppSettings settings, JsonArray outbounds, JsonArray endpoints)
+    {
+        if (!target.IsAutomatic)
+        {
+            Place(target.Tunnels[0], ProxyTag, settings, outbounds, endpoints);
+            return [];
+        }
+
+        var members = new List<GroupMember>(target.Tunnels.Count);
+        var tags = new JsonArray();
+
+        for (var index = 0; index < target.Tunnels.Count; index++)
+        {
+            var tag = ConnectionTarget.MemberTag(index);
+            Place(target.Tunnels[index], tag, settings, outbounds, endpoints);
+            members.Add(new GroupMember(tag, target.MemberNames[index]));
+            tags.Add(tag);
+        }
+
+        outbounds.Insert(0, new JsonObject
+        {
+            ["type"] = "urltest",
+            ["tag"] = ProxyTag,
+            ["outbounds"] = tags,
+            ["url"] = GroupTestUrl,
+            ["interval"] = GroupTestInterval,
+            ["tolerance"] = GroupToleranceMilliseconds,
+            ["idle_timeout"] = GroupIdleTimeout,
+            ["interrupt_exist_connections"] = false
+        });
+
+        return members;
     }
 
     /// <summary>Adds a node under a tag, in the section its type belongs to; WireGuard is an endpoint, everything else an outbound.</summary>
-    private static void Place(ParsedTunnel tunnel, string tag, JsonArray outbounds, JsonArray endpoints)
+    private static void Place(ParsedTunnel tunnel, string tag, AppSettings settings, JsonArray outbounds, JsonArray endpoints)
     {
         var node = TunnelParser.Clone(tunnel.Node);
         node["tag"] = tag;
         node["domain_resolver"] = LocalResolverTag;
+
+        if (settings.TlsFragment)
+        {
+            ApplyTlsFragment(node);
+        }
 
         if (tunnel.Endpoint is not null)
         {
@@ -165,6 +228,29 @@ public static class RuntimeConfigBuilder
         {
             outbounds.Add(node);
         }
+    }
+
+    /// <summary>
+    /// Splits the TLS handshake to the server over several TCP segments and several TLS records.
+    /// A firewall that matches the server name in the first packet of a connection then never
+    /// sees it whole; a server sees an ordinary, if slightly slower, handshake. Only TCP carries
+    /// a handshake this can split: QUIC-based protocols are left alone.
+    /// </summary>
+    private static void ApplyTlsFragment(JsonObject node)
+    {
+        if (node["tls"] is not JsonObject tls || tls["enabled"]?.GetValue<bool>() != true)
+        {
+            return;
+        }
+
+        var type = TunnelParser.ReadString(node, "type") ?? string.Empty;
+        if (QuicProtocols.Contains(type) || node["transport"] is JsonObject transport && TunnelParser.ReadString(transport, "type") == "quic")
+        {
+            return;
+        }
+
+        tls["fragment"] = true;
+        tls["record_fragment"] = true;
     }
 
     private static JsonObject BuildDns(AppSettings settings)
@@ -382,16 +468,20 @@ public static class RuntimeConfigBuilder
         .ToArray();
 
     /// <summary>Holds every listener open until all ports are known, so no two can be handed the same one.</summary>
-    public static int[] ReserveLoopbackPorts(int count)
+    public static int[] ReserveLoopbackPorts(int count) => ReserveLoopbackPorts(new int?[count]);
+
+    /// <summary>
+    /// Like <see cref="ReserveLoopbackPorts(int)"/>, but each slot may ask for a particular port
+    /// first. A preferred port that is taken, or out of range, falls back to any free one.
+    /// </summary>
+    public static int[] ReserveLoopbackPorts(IReadOnlyList<int?> preferred)
     {
-        var listeners = new List<TcpListener>(count);
+        var listeners = new List<TcpListener>(preferred.Count);
         try
         {
-            for (var index = 0; index < count; index++)
+            foreach (var wanted in preferred)
             {
-                var listener = new TcpListener(IPAddress.Loopback, 0);
-                listener.Start();
-                listeners.Add(listener);
+                listeners.Add(Listen(wanted is > 0 and <= 65535 ? wanted.Value : 0) ?? Listen(0)!);
             }
 
             return listeners.Select(listener => ((IPEndPoint)listener.LocalEndpoint).Port).ToArray();
@@ -402,6 +492,20 @@ public static class RuntimeConfigBuilder
             {
                 listener.Stop();
             }
+        }
+    }
+
+    private static TcpListener? Listen(int port)
+    {
+        var listener = new TcpListener(IPAddress.Loopback, port);
+        try
+        {
+            listener.Start();
+            return listener;
+        }
+        catch (SocketException) when (port != 0)
+        {
+            return null;
         }
     }
 }

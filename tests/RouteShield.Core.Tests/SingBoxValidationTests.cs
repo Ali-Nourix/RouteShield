@@ -42,7 +42,12 @@ public class SingBoxValidationTests
                 {
                     foreach (var lan in new[] { true, false })
                     {
-                        foreach (var profile in new[] { Fixtures.VlessReality, Fixtures.VlessWebSocket, Fixtures.Trojan, Fixtures.Shadowsocks, Fixtures.WireGuardConf, Fixtures.SingBoxJson })
+                        foreach (var profile in new[]
+                                 {
+                                     Fixtures.VlessReality, Fixtures.VlessWebSocket, Fixtures.VlessGrpc, Fixtures.Trojan,
+                                     Fixtures.Shadowsocks, Fixtures.WireGuardConf, Fixtures.SingBoxJson,
+                                     Fixtures.Hysteria2, Fixtures.Tuic, Fixtures.AnyTls
+                                 })
                         {
                             data.Add(mode, dns, ipv6, lan, profile);
                         }
@@ -101,6 +106,39 @@ public class SingBoxValidationTests
             Fixtures.Apps,
             bridges,
             new PortPlan(21080, 29090, "s3cret", [23000, 23001, 23002, 23003]));
+
+        AssertAccepted(core!, runtime.Json);
+    }
+
+    [SkippableFact]
+    public void An_automatic_group_is_accepted_by_the_core()
+    {
+        var core = CorePath;
+        Skip.If(core is null, "Set ROUTESHIELD_SINGBOX to a sing-box executable to run core validation.");
+
+        var runtime = RuntimeConfigBuilder.Build(
+            Fixtures.AutomaticGroup(),
+            Fixtures.Settings(),
+            Fixtures.Apps,
+            [BridgeRoute.Active(new VpnProfile { Name = "Auto" }), BridgeRoute.Bypass()],
+            new PortPlan(21080, 29090, "s3cret", [23000, 23001]));
+
+        AssertAccepted(core!, runtime.Json);
+    }
+
+    [SkippableTheory]
+    [InlineData(Fixtures.VlessReality)]
+    [InlineData(Fixtures.VlessWebSocket)]
+    [InlineData(Fixtures.Trojan)]
+    [InlineData(Fixtures.AnyTls)]
+    [InlineData(Fixtures.Hysteria2)]
+    public void Tls_fragmenting_is_accepted_by_the_core(string profile)
+    {
+        var core = CorePath;
+        Skip.If(core is null, "Set ROUTESHIELD_SINGBOX to a sing-box executable to run core validation.");
+
+        var runtime = RuntimeConfigBuilder.Build(
+            TunnelParser.Parse(profile), Fixtures.Settings(tlsFragment: true), Fixtures.Apps, [], new PortPlan(21080, 29090, "s3cret", []));
 
         AssertAccepted(core!, runtime.Json);
     }
