@@ -164,7 +164,7 @@ function Copy-Core {
         Copy-Item $CoreLicense (Join-Path $coreDirectory 'sing-box-LICENSE.txt') -Force
     }
 
-    foreach ($document in 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'SECURITY.md') {
+    foreach ($document in 'README.md', 'README.fa.md', 'CHANGELOG.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'SECURITY.md') {
         $path = Join-Path $Root $document
         if (Test-Path $path) {
             Copy-Item $path $Dist -Force
