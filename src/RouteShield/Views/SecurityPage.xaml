@@ -1,0 +1,130 @@
+<UserControl x:Class="RouteShield.Views.SecurityPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:RouteShield.Ui"
+             xmlns:views="clr-namespace:RouteShield.Views">
+
+    <UserControl.Resources>
+        <Style x:Key="SettingRow" TargetType="CheckBox" BasedOn="{StaticResource AppCheckBox}">
+            <Setter Property="Margin" Value="0,14" />
+        </Style>
+        <Style x:Key="SettingName" TargetType="TextBlock" BasedOn="{StaticResource BaseText}">
+            <Setter Property="FontFamily" Value="{StaticResource MediumFont}" />
+            <Setter Property="FontSize" Value="14" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="30,24,30,28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <views:PageHeader Kicker="PREFERENCES" Title="Security &amp; behaviour">
+            <views:PageHeader.Actions>
+                <TextBlock Style="{StaticResource Caption}" Text="Saved automatically" />
+            </views:PageHeader.Actions>
+        </views:PageHeader>
+
+        <ScrollViewer Grid.Row="1" Margin="0,22,0,0" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="Network protection" />
+                </Border>
+
+                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                    <CheckBox Style="{StaticResource SettingRow}" IsChecked="{Binding AppKillSwitch, Mode=TwoWay}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SettingName}" Text="Application kill switch" />
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,3,0,0" MaxWidth="720"
+                                       HorizontalAlignment="Left"
+                                       Text="Blocks the selected executables from reaching physical adapters whenever the tunnel drops." />
+                        </StackPanel>
+                    </CheckBox>
+                </Border>
+
+                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                    <CheckBox Style="{StaticResource SettingRow}" IsChecked="{Binding DnsProtection, Mode=TwoWay}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SettingName}" Text="Secure DNS through the tunnel" />
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,3,0,0" MaxWidth="720"
+                                       HorizontalAlignment="Left"
+                                       Text="Routed applications resolve over DNS-over-HTTPS inside the tunnel; everything else keeps the system resolver." />
+                        </StackPanel>
+                    </CheckBox>
+                </Border>
+
+                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                    <CheckBox Style="{StaticResource SettingRow}" IsChecked="{Binding Ipv6Protection, Mode=TwoWay}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SettingName}" Text="Include IPv6 in strict routing" />
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,3,0,0" MaxWidth="720"
+                                       HorizontalAlignment="Left"
+                                       Text="Recommended — prevents IPv6 traffic from bypassing the policy." />
+                        </StackPanel>
+                    </CheckBox>
+                </Border>
+
+                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                    <CheckBox Style="{StaticResource SettingRow}" IsChecked="{Binding AllowLan, Mode=TwoWay}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SettingName}" Text="Allow access to private / local networks" />
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,3,0,0" MaxWidth="720"
+                                       HorizontalAlignment="Left"
+                                       Text="Keeps printers and NAS devices reachable while connected." />
+                        </StackPanel>
+                    </CheckBox>
+                </Border>
+
+                <Grid Margin="0,26,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="34" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel>
+                        <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="Reliability" />
+                        </Border>
+                        <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                            <CheckBox Style="{StaticResource AppCheckBox}" Margin="0,13"
+                                      IsChecked="{Binding AutoReconnect, Mode=TwoWay}"
+                                      Content="Reconnect automatically with backoff" />
+                        </Border>
+                        <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                            <CheckBox Style="{StaticResource AppCheckBox}" Margin="0,13"
+                                      IsChecked="{Binding AutoConnect, Mode=TwoWay}"
+                                      Content="Connect the last profile on launch" />
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2">
+                        <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="Windows integration" />
+                        </Border>
+                        <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                            <CheckBox Style="{StaticResource AppCheckBox}" Margin="0,13"
+                                      IsChecked="{Binding StartWithWindows, Mode=TwoWay}"
+                                      Content="Start with Windows" />
+                        </Border>
+                        <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                            <CheckBox Style="{StaticResource AppCheckBox}" Margin="0,13"
+                                      IsChecked="{Binding CloseToTray, Mode=TwoWay}"
+                                      Content="Minimise to the notification area" />
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Grid Grid.Row="2" Margin="0,18,0,0">
+            <TextBlock Style="{StaticResource Caption}" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="700"
+                       HorizontalAlignment="Left"
+                       Text="Settings live in %LocalAppData%\RouteShield\settings.json — secrets sealed with DPAPI." />
+            <Button Style="{StaticResource SecondaryButton}" HorizontalAlignment="Right"
+                    Command="{Binding ResetSettingsCommand}" Content="Reset to defaults" />
+        </Grid>
+    </Grid>
+</UserControl>

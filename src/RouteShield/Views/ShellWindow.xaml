@@ -1,0 +1,147 @@
+<Window x:Class="RouteShield.Views.ShellWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:ui="clr-namespace:RouteShield.Ui"
+        xmlns:views="clr-namespace:RouteShield.Views"
+        xmlns:vm="clr-namespace:RouteShield.ViewModels"
+        Title="RouteShield"
+        Width="1320" Height="840" MinWidth="1120" MinHeight="720"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgBrush}"
+        Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource BodyFont}"
+        TextOptions.TextFormattingMode="Ideal"
+        UseLayoutRounding="True">
+
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="40" CornerRadius="0" GlassFrameThickness="0"
+                            ResizeBorderThickness="6" UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="40" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- ══ Title bar ══ -->
+        <Border Grid.Row="0" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
+                    <views:BrandMark Width="17" Height="20"
+                                     ShieldBrush="{StaticResource TextBrush}"
+                                     RouteBrush="{StaticResource AccentBrush}" />
+                    <TextBlock Margin="10,0,0,0" VerticalAlignment="Center"
+                               FontFamily="{StaticResource HeadingFont}" FontSize="12"
+                               ui:Typo.Tracked="ROUTESHIELD" />
+                    <TextBlock Margin="10,0,0,0" VerticalAlignment="Center" FontSize="11"
+                               Foreground="{StaticResource Neutral600Brush}"
+                               Text="{Binding AppVersion}" />
+                    <Border Margin="12,0,0,0" VerticalAlignment="Center" Padding="8,2"
+                            CornerRadius="{StaticResource RadiusPill}"
+                            Background="{StaticResource Accent100Brush}"
+                            Visibility="{Binding IsAdministrator, Converter={StaticResource Hide}}">
+                        <TextBlock FontFamily="{StaticResource HeadingFont}" FontSize="9"
+                                   Foreground="{StaticResource Accent800Brush}"
+                                   ui:Typo.Tracked="NOT ELEVATED" />
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button Style="{StaticResource WindowButton}" Click="OnMinimise" ToolTip="Minimise">
+                        <Path Data="M0,0 L9,0" Stroke="{StaticResource TextBrush}" StrokeThickness="1.4" />
+                    </Button>
+                    <Button Style="{StaticResource WindowButton}" Click="OnToggleMaximise" ToolTip="Maximise">
+                        <Rectangle Width="9" Height="9" Stroke="{StaticResource TextBrush}" StrokeThickness="1.4" />
+                    </Button>
+                    <Button Style="{StaticResource CloseWindowButton}" Click="OnClose" ToolTip="Close" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ══ Body ══ -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,2,0">
+                <DockPanel Margin="0,16,0,0">
+                    <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource DividerBrush}"
+                            BorderThickness="0,2,0,0" Padding="16">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource Kicker}" ui:Typo.Tracked="STATUS" />
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Ellipse Width="11" Height="11" VerticalAlignment="Center"
+                                         Fill="{StaticResource AccentBrush}"
+                                         Visibility="{Binding IsConnected, Converter={StaticResource Show}}" />
+                                <Ellipse Width="11" Height="11" VerticalAlignment="Center"
+                                         Stroke="{StaticResource Neutral500Brush}" StrokeThickness="2"
+                                         Visibility="{Binding IsConnected, Converter={StaticResource Hide}}" />
+                                <TextBlock Margin="9,0,0,0" VerticalAlignment="Center"
+                                           FontFamily="{StaticResource HeadingFont}" FontSize="17"
+                                           Text="{Binding StateWord}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource BaseText}">
+                                            <Setter Property="Foreground" Value="{StaticResource Neutral700Brush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                                    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,7,0,0" TextWrapping="Wrap"
+                                       Text="{Binding StatusDetail}" />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,3,0,0"
+                                       Text="{Binding KillSwitchStateText}" />
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel VerticalAlignment="Top">
+                        <RadioButton Style="{StaticResource NavItem}" Tag="01" Content="Dashboard"
+                                     IsChecked="{Binding Page, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=Dashboard}" />
+                        <RadioButton Style="{StaticResource NavItem}" Tag="02" Content="Profiles"
+                                     IsChecked="{Binding Page, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=Profiles}" />
+                        <RadioButton Style="{StaticResource NavItem}" Tag="03" Content="Applications"
+                                     IsChecked="{Binding Page, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=Applications}" />
+                        <RadioButton Style="{StaticResource NavItem}" Tag="04" Content="Security"
+                                     IsChecked="{Binding Page, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=Security}" />
+                        <RadioButton Style="{StaticResource NavItem}" Tag="05" Content="Diagnostics"
+                                     IsChecked="{Binding Page, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=Diagnostics}" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <Grid Grid.Column="1">
+                <views:DashboardPage Visibility="{Binding Page, Converter={StaticResource ShowForState}, ConverterParameter=Dashboard}" />
+                <views:ProfilesPage Visibility="{Binding Page, Converter={StaticResource ShowForState}, ConverterParameter=Profiles}" />
+                <views:ApplicationsPage Visibility="{Binding Page, Converter={StaticResource ShowForState}, ConverterParameter=Applications}" />
+                <views:SecurityPage Visibility="{Binding Page, Converter={StaticResource ShowForState}, ConverterParameter=Security}" />
+                <views:DiagnosticsPage Visibility="{Binding Page, Converter={StaticResource ShowForState}, ConverterParameter=Diagnostics}" />
+            </Grid>
+        </Grid>
+
+        <!-- ══ Busy scrim ══ -->
+        <Border Grid.Row="0" Grid.RowSpan="2" Background="{StaticResource ScrimBrush}"
+                Visibility="{Binding IsBusy, Converter={StaticResource Show}}">
+            <Border Style="{StaticResource Card}" Background="{StaticResource BgBrush}" BorderThickness="0"
+                    HorizontalAlignment="Center" VerticalAlignment="Center" Effect="{StaticResource ShadowLg}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource Kicker}" Foreground="{StaticResource AccentBrush}"
+                               ui:Typo.Tracked="WORKING" />
+                    <TextBlock Style="{StaticResource SectionTitle}" Margin="0,10,0,0" Text="{Binding BusyMessage}" />
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
+</Window>

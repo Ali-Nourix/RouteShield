@@ -1,0 +1,48 @@
+# Security model
+
+## What is protected
+
+- **Secrets at rest.** Profile bodies and subscription URLs are sealed with the current user's
+  DPAPI key before `settings.json` is written, so a copied settings file is useless on another
+  account or machine.
+- **Configuration validation.** Every configuration is checked by the core itself before the
+  core is started with it.
+- **Leak containment.** The TUN adapter uses strict routing. While the tunnel is up and the
+  policy is *Selected applications*, the routed executables are blocked by Windows Firewall from
+  reaching the internet over any physical adapter.
+- **DNS.** With secure DNS on, routed applications resolve over DNS-over-HTTPS inside the
+  tunnel. Only the resolver used for dialing the proxy server itself stays outside it, because
+  nothing can resolve through a tunnel that is not up yet.
+- **Logs.** Everything written to the log is redacted first: keys, passwords, UUIDs, tokens,
+  share links, and the path and query of any URL. The diagnostics bundle contains only redacted
+  logs and a short environment summary.
+- **Supply chain.** The build downloads the pinned sing-box release from the official repository
+  over HTTPS and verifies it against the digest GitHub publishes for that asset.
+
+## What is not protected
+
+- There is no signed WFP driver, so the kill switch is a firewall rule set rather than a kernel
+  filter. It is removed when the tunnel stops and when RouteShield exits.
+- The kill switch does not survive a reboot, and does not cover applications outside the
+  selected list.
+- The runtime configuration is written in plaintext to `%LocalAppData%\RouteShield\runtime.json`
+  while the core reads it, and deleted when the core stops.
+- The Clash API listens on loopback with a token that changes every run, but any process running
+  as your user can read that token out of the runtime configuration.
+- The build is not code-signed, and the project has had no independent audit.
+
+## Emergency cleanup
+
+If RouteShield is killed before it can tidy up, an elevated PowerShell session can undo both
+of its system changes:
+
+```powershell
+Get-NetFirewallRule -Group 'RouteShield Kill Switch' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+Get-Process sing-box -ErrorAction SilentlyContinue | Stop-Process -Force
+```
+
+## Reporting
+
+Open an issue describing what happened and what you expected. Never attach a live profile,
+subscription URL, or key to an issue — the exported diagnostics bundle is already redacted and
+is the right thing to send.

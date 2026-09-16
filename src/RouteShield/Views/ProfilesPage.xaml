@@ -1,0 +1,179 @@
+<UserControl x:Class="RouteShield.Views.ProfilesPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:RouteShield.Ui"
+             xmlns:views="clr-namespace:RouteShield.Views">
+
+    <Grid Margin="30,24,30,28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <views:PageHeader Kicker="LIBRARY" Title="Profiles &amp; subscriptions">
+            <views:PageHeader.Actions>
+                <StackPanel Orientation="Horizontal">
+                    <Button Style="{StaticResource SecondaryButton}" Command="{Binding ImportProfileCommand}"
+                            Content="Import file" />
+                    <Button Style="{StaticResource PrimaryButton}" Margin="8,0,0,0"
+                            Command="{Binding NewProfileCommand}" Content="New profile" />
+                </StackPanel>
+            </views:PageHeader.Actions>
+        </views:PageHeader>
+
+        <Grid Grid.Row="1" Margin="0,20,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="28" />
+                <ColumnDefinition Width="1.25*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- ══ Library ══ -->
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2"
+                            Padding="0,0,0,9">
+                        <Grid>
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="Profiles" />
+                            <TextBlock Style="{StaticResource Caption}" HorizontalAlignment="Right"
+                                       VerticalAlignment="Bottom">
+                                <Run Text="{Binding Profiles.Count, Mode=OneWay}" />
+                                <Run Text="saved" />
+                            </TextBlock>
+                        </Grid>
+                    </Border>
+
+                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,14,0,0"
+                               Text="Paste a share link into the editor, import a file, or add a subscription URL below."
+                               Visibility="{Binding Profiles.Count, Converter={StaticResource ShowIfEmpty}}" />
+
+                    <ListBox Style="{StaticResource AppListBox}" ItemsSource="{Binding Profiles}"
+                             SelectedItem="{Binding SelectedProfile, Mode=TwoWay}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="10,0,0,0">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource RowLabel}" TextTrimming="CharacterEllipsis"
+                                                   Text="{Binding Name}" />
+                                        <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
+                                                   Text="{Binding Format}" />
+                                    </StackPanel>
+                                    <Ellipse Width="8" Height="8" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                             Fill="{StaticResource AccentBrush}"
+                                             Visibility="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}, Converter={StaticResource Show}}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+
+                <StackPanel Grid.Row="1" Margin="0,24,0,0">
+                    <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
+                        <Grid>
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="Subscriptions" />
+                            <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Right"
+                                    Command="{Binding RefreshSubscriptionsCommand}" Content="Refresh all" />
+                        </Grid>
+                    </Border>
+
+                    <ItemsControl ItemsSource="{Binding Subscriptions}" MaxHeight="120">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1"
+                                        Padding="0,10" Background="Transparent" MouseLeftButtonUp="OnSubscriptionClicked">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource RowLabel}" Text="{Binding Name}" />
+                                        <TextBlock Margin="0,2,0,0"
+                                                   TextTrimming="CharacterEllipsis" Text="{Binding StatusText}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock" BasedOn="{StaticResource Caption}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasError}" Value="True">
+                                                            <Setter Property="Foreground" Value="{StaticResource Accent700Brush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <StackPanel Margin="0,14,0,0">
+                        <TextBlock Style="{StaticResource FieldLabel}" ui:Typo.Tracked="SUBSCRIPTION NAME" />
+                        <TextBox Style="{StaticResource AppTextBox}" Tag="Provider A"
+                                 Text="{Binding SubscriptionName, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+
+                    <StackPanel Margin="0,10,0,0">
+                        <TextBlock Style="{StaticResource FieldLabel}" ui:Typo.Tracked="HTTPS URL" />
+                        <TextBox Style="{StaticResource AppTextBox}" Tag="https://sub.example.net/link/…"
+                                 Text="{Binding SubscriptionUrl, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button Style="{StaticResource PrimaryButton}" Command="{Binding SaveSubscriptionCommand}"
+                                Content="Add / update" />
+                        <Button Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"
+                                Command="{Binding RemoveSubscriptionCommand}" Content="Remove" />
+                    </StackPanel>
+
+                    <TextBlock Style="{StaticResource Caption}" Margin="0,10,0,0" TextWrapping="Wrap"
+                               Text="URLs are stored encrypted with Windows DPAPI." />
+                </StackPanel>
+            </Grid>
+
+            <!-- ══ Editor ══ -->
+            <DockPanel Grid.Column="2">
+                <Border DockPanel.Dock="Top" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2"
+                        Padding="0,0,0,9">
+                    <Grid>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="Profile editor" />
+                            <Border Margin="12,0,0,0" Padding="9,4" VerticalAlignment="Center"
+                                    CornerRadius="{StaticResource RadiusPill}"
+                                    Background="{StaticResource Accent100Brush}">
+                                <TextBlock FontFamily="{StaticResource HeadingFont}" FontSize="10"
+                                           Foreground="{StaticResource Accent800Brush}"
+                                           Text="{Binding EditorFormat, Converter={StaticResource Tracked}}" />
+                            </Border>
+                        </StackPanel>
+                        <Button Style="{StaticResource SecondaryButton}" HorizontalAlignment="Right"
+                                Command="{Binding DetectFormatCommand}" Content="Check format" />
+                    </Grid>
+                </Border>
+
+                <StackPanel DockPanel.Dock="Top" Margin="0,16,0,0">
+                    <TextBlock Style="{StaticResource FieldLabel}" ui:Typo.Tracked="PROFILE NAME" />
+                    <TextBox Style="{StaticResource AppTextBox}" Tag="Frankfurt"
+                             Text="{Binding EditorName, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+
+                <Border DockPanel.Dock="Bottom" Margin="0,14,0,0">
+                    <Grid>
+                        <TextBlock Style="{StaticResource Caption}" VerticalAlignment="Center" TextWrapping="Wrap"
+                                   MaxWidth="420" HorizontalAlignment="Left"
+                                   Text="Saved secrets are encrypted with Windows DPAPI and never leave this machine." />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Style="{StaticResource SecondaryButton}" Command="{Binding DeleteProfileCommand}"
+                                    Content="Delete" />
+                            <Button Style="{StaticResource PrimaryButton}" Margin="8,0,0,0"
+                                    Command="{Binding SaveProfileCommand}" Content="Save profile" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <TextBox Style="{StaticResource CodeTextBox}" Margin="0,14,0,0"
+                         Tag="vless://… or a sing-box configuration"
+                         Text="{Binding EditorConfig, UpdateSourceTrigger=PropertyChanged}" />
+            </DockPanel>
+        </Grid>
+    </Grid>
+</UserControl>
