@@ -237,16 +237,47 @@ function Copy-Core {
     }
 }
 
+<#
+.SYNOPSIS
+    Stages both browser extensions next to the app and zips each for the release.
+.DESCRIPTION
+    Each browser gets the shared popup and bridge client plus its own manifest and
+    background script. The manifest version is rewritten to the package version so the
+    add-on and the app it talks to always report the same number.
+#>
+function Copy-Extensions {
+    Step 'Packaging the browser extensions'
+
+    $source = Join-Path $Root 'extension'
+    $target = Join-Path $Dist 'extensions'
+    New-Item -ItemType Directory -Force -Path $Artifacts, $target | Out-Null
+
+    foreach ($browser in 'firefox', 'chrome') {
+        $staging = Join-Path $target $browser
+        Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Force -Path $staging | Out-Null
+
+        Copy-Item (Join-Path $source 'shared') (Join-Path $staging 'shared') -Recurse -Force
+        Copy-Item (Join-Path $source "$browser\*") $staging -Recurse -Force
+        Copy-Item (Join-Path $source 'README.md') $staging -Force
+
+        $manifestPath = Join-Path $staging 'manifest.json'
+        $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+        $manifest.version = ($PackageVersion -split '-')[0]
+        $manifest | ConvertTo-Json -Depth 10 | Set-Content $manifestPath -Encoding utf8
+
+        $package = Join-Path $Artifacts "RouteShield-Extension-$browser-$PackageVersion.zip"
+        Remove-Item $package -Force -ErrorAction SilentlyContinue
+        Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $package -CompressionLevel Optimal
+        Write-Host "  $package"
+    }
+}
+
 function Compress-Package {
     Step 'Writing the package'
 
-    # The project file is the source of truth. Reading it back off the published binary
-    # depends on the host being able to parse PE version resources, which is not a thing
-    # to rely on for something as load-bearing as the package name.
-    $resolved = if ($Version) { $Version } else { Get-ProjectVersion }
-
     New-Item -ItemType Directory -Force -Path $Artifacts | Out-Null
-    $package = Join-Path $Artifacts "RouteShield-$resolved-$Runtime.zip"
+    $package = Join-Path $Artifacts "RouteShield-$PackageVersion-$Runtime.zip"
     Remove-Item $package -Force -ErrorAction SilentlyContinue
 
     Compress-Archive -Path (Join-Path $Dist '*') -DestinationPath $package -CompressionLevel Optimal
@@ -254,13 +285,20 @@ function Compress-Package {
     $hash = (Get-FileHash $package -Algorithm SHA256).Hash.ToLowerInvariant()
     Set-Content -Path "$package.sha256" -Value "$hash  $(Split-Path $package -Leaf)" -Encoding ascii
 
+    Get-ChildItem $Artifacts -Filter 'RouteShield-Extension-*.zip' | ForEach-Object {
+        $extensionHash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        Set-Content -Path "$($_.FullName).sha256" -Value "$extensionHash  $($_.Name)" -Encoding ascii
+    }
+
     Write-Host ''
     Write-Host "Package: $package" -ForegroundColor Green
     Write-Host "SHA-256: $hash" -ForegroundColor Green
 }
 
 $Dotnet = Resolve-Dotnet
+$PackageVersion = if ($Version) { $Version } else { Get-ProjectVersion }
 Install-SingBox
 Publish-App
 Copy-Core
+Copy-Extensions
 Compress-Package

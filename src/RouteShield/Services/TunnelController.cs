@@ -22,6 +22,9 @@ public sealed class TunnelController : IAsyncDisposable
     ];
 
     private const int MaxReconnectAttempts = 8;
+    private const int ProbeAttempts = 3;
+    private static readonly TimeSpan ProbeRetryDelay = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan ProbeInterval = TimeSpan.FromSeconds(60);
 
     private readonly CoreProcessService _core = new();
     private readonly FirewallService _firewall = new();
@@ -31,6 +34,7 @@ public sealed class TunnelController : IAsyncDisposable
 
     private TunnelSession? _session;
     private CancellationTokenSource? _reconnect;
+    private CancellationTokenSource? _probing;
 
     public TunnelController()
     {
@@ -43,7 +47,11 @@ public sealed class TunnelController : IAsyncDisposable
         };
     }
 
-    private sealed record TunnelSession(VpnProfile Profile, AppSettings Settings, IReadOnlyList<AppTarget> Apps);
+    private sealed record TunnelSession(
+        VpnProfile Profile,
+        AppSettings Settings,
+        IReadOnlyList<AppTarget> Apps,
+        IReadOnlyList<VpnProfile> Pinned);
 
     public event Action? Changed;
 
@@ -55,6 +63,8 @@ public sealed class TunnelController : IAsyncDisposable
 
     public long? LatencyMilliseconds { get; private set; }
 
+    public string? ProbeFailure { get; private set; }
+
     public double ThroughputMegabytesPerSecond { get; private set; }
 
     public DateTimeOffset? ConnectedAt { get; private set; }
@@ -65,9 +75,10 @@ public sealed class TunnelController : IAsyncDisposable
 
     public bool KillSwitchArmed { get; private set; }
 
-    public string CorePath => _core.CorePath;
+    /// <summary>The browser-facing proxies of the running core; empty while disconnected.</summary>
+    public IReadOnlyList<BridgeBinding> Bridges { get; private set; } = [];
 
-    public bool IsCoreInstalled => File.Exists(_core.CorePath);
+    public VpnProfile? ActiveProfile => _session?.Profile;
 
     public async Task LoadCoreVersionAsync()
     {
@@ -86,7 +97,7 @@ public sealed class TunnelController : IAsyncDisposable
     /// <summary>Builds the configuration and asks the core to check it, without starting anything.</summary>
     public async Task<string> ValidateAsync(VpnProfile profile, AppSettings settings, IReadOnlyList<AppTarget> apps)
     {
-        var runtime = BuildRuntime(profile, settings, apps);
+        var runtime = BuildRuntime(profile, settings, apps, []);
         var scratch = Path.Combine(AppPaths.Root, "validate.json");
         AppPaths.Ensure();
         await File.WriteAllTextAsync(scratch, runtime.Json, new UTF8Encoding(false));
@@ -113,13 +124,17 @@ public sealed class TunnelController : IAsyncDisposable
         }
     }
 
-    public async Task ConnectAsync(VpnProfile profile, AppSettings settings, IReadOnlyList<AppTarget> apps)
+    public async Task ConnectAsync(
+        VpnProfile profile,
+        AppSettings settings,
+        IReadOnlyList<AppTarget> apps,
+        IReadOnlyList<VpnProfile> pinned)
     {
         await _transition.WaitAsync();
         try
         {
             CancelReconnect();
-            _session = new TunnelSession(profile, settings, apps);
+            _session = new TunnelSession(profile, settings, apps, pinned);
             ReconnectAttempt = 0;
             await StartAsync(_session);
         }
@@ -165,11 +180,19 @@ public sealed class TunnelController : IAsyncDisposable
         Changed?.Invoke();
     }
 
+    public async Task StopReconnectingAsync()
+    {
+        CancelReconnect();
+        _session = null;
+        await TearDownAsync(keepKillSwitch: false);
+        Report(TunnelState.Disconnected, "Traffic is on your local adapter");
+    }
+
     private async Task StartAsync(TunnelSession session)
     {
         Report(TunnelState.Connecting, "Starting sing-box and attaching the TUN adapter");
 
-        var runtime = BuildRuntime(session.Profile, session.Settings, session.Apps);
+        var runtime = BuildRuntime(session.Profile, session.Settings, session.Apps, BridgeRoutesFor(session));
 
         AppPaths.Ensure();
         await File.WriteAllTextAsync(AppPaths.RuntimeConfig, runtime.Json, new UTF8Encoding(false));
@@ -190,29 +213,112 @@ public sealed class TunnelController : IAsyncDisposable
 
         ConnectedAt = DateTimeOffset.Now;
         ReconnectAttempt = 0;
+        Bridges = runtime.Bridges;
         Report(TunnelState.Connected, DescribeRoute(session.Settings, session.Apps.Count));
 
+        if (runtime.Bridges.Count > 0)
+        {
+            AppLog.Write(LogCategory.Network, $"Browser bridge: {runtime.Bridges.Count} route(s) on loopback");
+        }
+
         _traffic.Start(runtime.ControlUri, runtime.ControlSecret);
-        _ = MeasureAsync(runtime);
+        StartProbing(runtime);
     }
 
-    private async Task MeasureAsync(RuntimeConfig runtime)
+    /// <summary>
+    /// The routes the browser extension can pick from: the tunnel's own profile, every pinned
+    /// profile that parses, and a way out that uses no VPN at all.
+    /// </summary>
+    private static List<BridgeRoute> BridgeRoutesFor(TunnelSession session)
+    {
+        if (!session.Settings.BrowserBridgeEnabled)
+        {
+            return [];
+        }
+
+        var routes = new List<BridgeRoute> { BridgeRoute.Active(session.Profile) };
+
+        foreach (var profile in session.Pinned.Where(candidate => candidate.Id != session.Profile.Id))
+        {
+            try
+            {
+                routes.Add(BridgeRoute.Profile(profile, TunnelParser.Parse(profile.ConfigText)));
+            }
+            catch (Exception exception) when (exception is FormatException or NotSupportedException or InvalidOperationException)
+            {
+                AppLog.Write(LogCategory.Config, $"Pinned profile \"{profile.Name}\" left out of the browser bridge: {exception.Message}");
+            }
+        }
+
+        routes.Add(BridgeRoute.Bypass());
+        return routes;
+    }
+
+    private void StartProbing(RuntimeConfig runtime)
+    {
+        StopProbing();
+        var cancellation = new CancellationTokenSource();
+        _probing = cancellation;
+        _ = ProbeLoopAsync(runtime, cancellation.Token);
+    }
+
+    private void StopProbing()
+    {
+        _probing?.Cancel();
+        _probing?.Dispose();
+        _probing = null;
+    }
+
+    /// <summary>
+    /// Measures right after start — with a few retries, because a WireGuard handshake or a
+    /// slow first TLS connection can outlast the first attempt — and then keeps the latency
+    /// figure fresh for as long as the tunnel is up.
+    /// </summary>
+    private async Task ProbeLoopAsync(RuntimeConfig runtime, CancellationToken cancellationToken)
     {
         try
         {
-            var result = await _probe.RunAsync(runtime.ProxyUri);
+            for (var attempt = 1; attempt <= ProbeAttempts; attempt++)
+            {
+                if (await MeasureOnceAsync(runtime, cancellationToken) || attempt == ProbeAttempts)
+                {
+                    break;
+                }
+
+                await Task.Delay(ProbeRetryDelay, cancellationToken);
+            }
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(ProbeInterval, cancellationToken);
+                await MeasureOnceAsync(runtime, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task<bool> MeasureOnceAsync(RuntimeConfig runtime, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _probe.RunAsync(runtime.ProxyUri, cancellationToken);
             ExitIp = result.ExitIp;
             LatencyMilliseconds = result.LatencyMs;
+            ProbeFailure = null;
             AppLog.Write(LogCategory.Network, $"Probe ok — exit {result.ExitIp}, rtt {result.LatencyMs} ms");
+            Changed?.Invoke();
+            return true;
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException
+                                          && !cancellationToken.IsCancellationRequested)
         {
-            ExitIp = null;
-            LatencyMilliseconds = null;
+            ProbeFailure = exception.Message;
             AppLog.Write(LogCategory.Network, $"Probe failed: {exception.Message}");
+            Changed?.Invoke();
+            return false;
         }
-
-        Changed?.Invoke();
     }
 
     private void OnCoreExited(int exitCode)
@@ -220,10 +326,8 @@ public sealed class TunnelController : IAsyncDisposable
         AppLog.Write(LogCategory.Core, $"The core exited unexpectedly (code {exitCode})");
 
         _traffic.Stop();
-        ConnectedAt = null;
-        ExitIp = null;
-        LatencyMilliseconds = null;
-        ThroughputMegabytesPerSecond = 0;
+        StopProbing();
+        ClearMeasurements();
 
         var session = _session;
         if (session is null || !session.Settings.AutoReconnect)
@@ -288,14 +392,6 @@ public sealed class TunnelController : IAsyncDisposable
         }
     }
 
-    public async Task StopReconnectingAsync()
-    {
-        CancelReconnect();
-        _session = null;
-        await TearDownAsync(keepKillSwitch: false);
-        Report(TunnelState.Disconnected, "Traffic is on your local adapter");
-    }
-
     private void CancelReconnect()
     {
         _reconnect?.Cancel();
@@ -307,6 +403,7 @@ public sealed class TunnelController : IAsyncDisposable
     private async Task TearDownAsync(bool keepKillSwitch)
     {
         _traffic.Stop();
+        StopProbing();
         await _core.StopAsync();
 
         if (!keepKillSwitch && KillSwitchArmed)
@@ -322,13 +419,24 @@ public sealed class TunnelController : IAsyncDisposable
             }
         }
 
+        ClearMeasurements();
+        Bridges = [];
+    }
+
+    private void ClearMeasurements()
+    {
         ConnectedAt = null;
         ExitIp = null;
         LatencyMilliseconds = null;
+        ProbeFailure = null;
         ThroughputMegabytesPerSecond = 0;
     }
 
-    private static RuntimeConfig BuildRuntime(VpnProfile profile, AppSettings settings, IReadOnlyList<AppTarget> apps)
+    private static RuntimeConfig BuildRuntime(
+        VpnProfile profile,
+        AppSettings settings,
+        IReadOnlyList<AppTarget> apps,
+        IReadOnlyList<BridgeRoute> bridges)
     {
         if (string.IsNullOrWhiteSpace(profile.ConfigText))
         {
@@ -342,7 +450,7 @@ public sealed class TunnelController : IAsyncDisposable
             AppLog.Write(LogCategory.Config, warning);
         }
 
-        var runtime = RuntimeConfigBuilder.Build(parsed, settings, apps);
+        var runtime = RuntimeConfigBuilder.Build(parsed, settings, apps, bridges);
         AppLog.Write(LogCategory.Config, $"Profile \"{profile.Name}\" built as {parsed.FormatName}");
 
         return runtime;
@@ -357,12 +465,12 @@ public sealed class TunnelController : IAsyncDisposable
 
     private static string FirstMeaningfulLine(string output)
     {
-        var line = output
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .LastOrDefault(candidate => candidate.Contains("FATAL", StringComparison.OrdinalIgnoreCase)
-                                        || candidate.Contains("ERROR", StringComparison.OrdinalIgnoreCase));
+        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        line ??= output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault();
+        var line = lines.LastOrDefault(candidate => candidate.Contains("FATAL", StringComparison.OrdinalIgnoreCase)
+                                                    || candidate.Contains("ERROR", StringComparison.OrdinalIgnoreCase))
+                   ?? lines.LastOrDefault();
+
         return string.IsNullOrWhiteSpace(line) ? "The core reported an unknown error." : StripAnsi(line);
     }
 
@@ -381,6 +489,7 @@ public sealed class TunnelController : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         CancelReconnect();
+        StopProbing();
         _traffic.Dispose();
         await _core.DisposeAsync();
 

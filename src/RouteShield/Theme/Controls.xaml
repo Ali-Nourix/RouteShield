@@ -308,6 +308,32 @@
         </Setter>
     </Style>
 
+    <!-- A segmented switch: options sit inside one hairline frame; the chosen one fills with ink. -->
+    <Style x:Key="SegmentOption" TargetType="RadioButton">
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="FontFamily" Value="{StaticResource HeadingFont}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="Shell" Background="Transparent" Padding="14,8" CornerRadius="8" Margin="1">
+                        <ContentPresenter VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Shell" Property="Background" Value="{StaticResource HoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Shell" Property="Background" Value="{StaticResource TextBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource BgBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ══ Combo box ══ -->
 
     <Style x:Key="ComboToggle" TargetType="ToggleButton">
@@ -535,7 +561,7 @@
     <!-- ══ Tags ══ -->
 
     <Style x:Key="TagBase" TargetType="Border">
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusPill}" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusXs}" />
         <Setter Property="Padding" Value="9,4" />
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
@@ -559,6 +585,32 @@
         <Setter Property="FontFamily" Value="{StaticResource HeadingFont}" />
         <Setter Property="FontSize" Value="10" />
         <Setter Property="Foreground" Value="{StaticResource BgBrush}" />
+    </Style>
+
+    <!-- ══ Status marks ══ -->
+
+    <!-- The small square that stands in for a status light: filled when live, outlined when idle. -->
+    <Style x:Key="StatusMark" TargetType="Border">
+        <Setter Property="Width" Value="11" />
+        <Setter Property="Height" Value="11" />
+        <Setter Property="CornerRadius" Value="3" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="BorderThickness" Value="2" />
+        <Setter Property="BorderBrush" Value="{StaticResource Neutral500Brush}" />
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <Style x:Key="StatusMarkLive" TargetType="Border" BasedOn="{StaticResource StatusMark}">
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+    </Style>
+
+    <Style x:Key="Chip" TargetType="Border">
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusXs}" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
     <!-- ══ Tool tips ══ -->

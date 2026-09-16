@@ -1,0 +1,43 @@
+<Window x:Class="RouteShield.Views.SubscriptionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:RouteShield.Ui"
+        Title="Subscription"
+        SizeToContent="Height" Width="560"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        FontFamily="{StaticResource BodyFont}" Foreground="{StaticResource TextBrush}"
+        UseLayoutRounding="True">
+
+    <Border Background="{StaticResource BgBrush}" CornerRadius="{StaticResource RadiusLg}" Padding="28,26"
+            Effect="{StaticResource ShadowLg}" Margin="24" MouseLeftButtonDown="OnDragWindow">
+        <StackPanel>
+            <TextBlock Style="{StaticResource Kicker}" Foreground="{StaticResource AccentBrush}"
+                       ui:Typo.Tracked="SUBSCRIPTION" />
+            <TextBlock x:Name="TitleText" Margin="0,12,0,0" FontFamily="{StaticResource HeadingFont}" FontSize="26"
+                       Text="Add a subscription" />
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,10,0,0"
+                       Text="An HTTPS address that returns share links, plain or Base64. It is refreshed on demand and stored sealed with DPAPI." />
+
+            <TextBlock Style="{StaticResource FieldLabel}" Margin="0,20,0,7" ui:Typo.Tracked="NAME" />
+            <TextBox x:Name="NameBox" Style="{StaticResource AppTextBox}" Tag="Provider A" />
+
+            <TextBlock Style="{StaticResource FieldLabel}" Margin="0,14,0,7" ui:Typo.Tracked="HTTPS URL" />
+            <TextBox x:Name="UrlBox" Style="{StaticResource AppTextBox}" Tag="https://sub.example.net/link/…"
+                     TextChanged="OnUrlChanged" />
+            <TextBlock x:Name="UrlHint" Style="{StaticResource Caption}" Margin="0,6,0,0"
+                       Foreground="{StaticResource Accent700Brush}" Visibility="Collapsed"
+                       Text="The address has to start with https://" />
+
+            <Grid Margin="0,22,0,0">
+                <Button x:Name="RemoveButton" Style="{StaticResource GhostButton}" HorizontalAlignment="Left"
+                        Content="Remove subscription" Click="OnRemove" Visibility="Collapsed" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Style="{StaticResource SecondaryButton}" Content="Cancel" Click="OnCancel" />
+                    <Button x:Name="SaveButton" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0"
+                            Content="Save and refresh" Click="OnSave" />
+                </StackPanel>
+            </Grid>
+        </StackPanel>
+    </Border>
+</Window>

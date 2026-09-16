@@ -6,12 +6,22 @@ namespace RouteShield.Tests;
 
 public class RuntimeConfigBuilderTests
 {
-    private static JsonObject Build(AppSettings settings, params AppTarget[] apps)
+    private static readonly PortPlan FixedPorts = new(21080, 29090, "s3cret", []);
+
+    private static JsonObject Build(AppSettings settings, params AppTarget[] apps) =>
+        Build(settings, [], apps);
+
+    private static JsonObject Build(AppSettings settings, IReadOnlyList<BridgeRoute> bridges, params AppTarget[] apps)
     {
         var parsed = TunnelParser.Parse(Fixtures.VlessReality);
-        var runtime = RuntimeConfigBuilder.Build(parsed, settings, apps.Length == 0 ? Fixtures.Apps : apps);
+        var ports = new PortPlan(21080, 29090, "s3cret", Enumerable.Range(23000, bridges.Count).ToArray());
+        var runtime = RuntimeConfigBuilder.Build(parsed, settings, apps.Length == 0 ? Fixtures.Apps : apps, bridges, ports);
         return JsonNode.Parse(runtime.Json)!.AsObject();
     }
+
+    private static JsonObject ProcessRuleOf(JsonObject root) => root["route"]!["rules"]!.AsArray()
+        .OfType<JsonObject>()
+        .Single(rule => rule.ContainsKey("process_path_regex"));
 
     [Fact]
     public void Route_always_names_a_default_domain_resolver()
@@ -48,12 +58,18 @@ public class RuntimeConfigBuilderTests
                 .Select(server => server!["tag"]!.GetValue<string>())
                 .ToHashSet();
 
-            var referenced = new List<string> { dns["final"]!.GetValue<string>() };
-            referenced.Add(root["route"]!["default_domain_resolver"]!["server"]!.GetValue<string>());
+            var referenced = new List<string>
+            {
+                dns["final"]!.GetValue<string>(),
+                root["route"]!["default_domain_resolver"]!["server"]!.GetValue<string>()
+            };
 
             if (dns["rules"] is JsonArray rules)
             {
-                referenced.AddRange(rules.Select(rule => rule!["server"]!.GetValue<string>()));
+                referenced.AddRange(rules
+                    .OfType<JsonObject>()
+                    .Where(rule => rule.ContainsKey("server"))
+                    .Select(rule => rule["server"]!.GetValue<string>()));
             }
 
             Assert.All(referenced, tag => Assert.Contains(tag, declared));
@@ -61,21 +77,62 @@ public class RuntimeConfigBuilderTests
     }
 
     [Fact]
+    public void Secure_dns_answers_names_from_the_fake_range()
+    {
+        // Windows sends every DNS query from the DNS Client service, never from the application
+        // that asked, so no per-process rule can carry a routed application's DNS through the
+        // tunnel. Fake answers sidestep the question: the name itself travels to the proxy.
+        var dns = Build(Fixtures.Settings())["dns"]!.AsObject();
+        var fake = dns["servers"]!.AsArray().OfType<JsonObject>()
+            .Single(server => server["tag"]!.GetValue<string>() == RuntimeConfigBuilder.FakeResolverTag);
+
+        Assert.Equal("fakeip", fake["type"]!.GetValue<string>());
+        Assert.Equal("198.18.0.0/15", fake["inet4_range"]!.GetValue<string>());
+        Assert.Equal("fc00::/18", fake["inet6_range"]!.GetValue<string>());
+
+        var rule = dns["rules"]![0]!.AsObject();
+        Assert.Equal(RuntimeConfigBuilder.FakeResolverTag, rule["server"]!.GetValue<string>());
+        Assert.Equal(["A", "AAAA"], rule["query_type"]!.AsArray().Select(type => type!.GetValue<string>()));
+        Assert.Equal(RuntimeConfigBuilder.LocalResolverTag, dns["final"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void Fake_addresses_survive_a_restart()
+    {
+        var cache = Build(Fixtures.Settings())["experimental"]!["cache_file"]!.AsObject();
+
+        Assert.True(cache["enabled"]!.GetValue<bool>());
+        Assert.True(cache["store_fakeip"]!.GetValue<bool>());
+        Assert.Equal(AppPaths.CacheFile, cache["path"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void Ipv6_off_answers_aaaa_with_nothing_instead_of_a_real_address()
+    {
+        var dns = Build(Fixtures.Settings(ipv6: false))["dns"]!.AsObject();
+        var rules = dns["rules"]!.AsArray().OfType<JsonObject>().ToList();
+
+        var aaaa = rules.Single(rule => rule["query_type"]!.AsArray().Any(type => type!.GetValue<string>() == "AAAA"));
+        Assert.Equal("predefined", aaaa["action"]!.GetValue<string>());
+        Assert.Equal("NOERROR", aaaa["rcode"]!.GetValue<string>());
+
+        var fake = dns["servers"]!.AsArray().OfType<JsonObject>()
+            .Single(server => server["tag"]!.GetValue<string>() == RuntimeConfigBuilder.FakeResolverTag);
+        Assert.Null(fake["inet6_range"]);
+        Assert.Equal("ipv4_only", dns["strategy"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void Secure_dns_off_leaves_a_single_local_resolver()
     {
-        var dns = Build(Fixtures.Settings(dnsProtection: false))["dns"]!.AsObject();
+        var root = Build(Fixtures.Settings(dnsProtection: false));
+        var dns = root["dns"]!.AsObject();
 
         Assert.Equal(RuntimeConfigBuilder.LocalResolverTag, dns["final"]!.GetValue<string>());
         Assert.Single(dns["servers"]!.AsArray());
         Assert.Null(dns["rules"]);
-    }
-
-    [Fact]
-    public void Secure_dns_off_stops_hijacking_queries()
-    {
-        var rules = Build(Fixtures.Settings(dnsProtection: false))["route"]!["rules"]!.AsArray();
-
-        Assert.DoesNotContain(rules, rule => rule!["action"]!.GetValue<string>() == "hijack-dns");
+        Assert.Null(root["experimental"]!["cache_file"]);
+        Assert.DoesNotContain(root["route"]!["rules"]!.AsArray(), rule => rule!["action"]!.GetValue<string>() == "hijack-dns");
     }
 
     [Theory]
@@ -83,12 +140,10 @@ public class RuntimeConfigBuilderTests
     [InlineData(RouteMode.AllExceptSelected, "proxy", RuntimeConfigBuilder.DirectTag)]
     public void Selected_applications_are_routed_against_the_default(RouteMode mode, string expectedFinal, string expectedOutbound)
     {
-        var route = Build(Fixtures.Settings(mode))["route"]!.AsObject();
-        var processRule = route["rules"]!.AsArray()
-            .OfType<JsonObject>()
-            .Single(rule => rule.ContainsKey("process_path_regex"));
+        var root = Build(Fixtures.Settings(mode));
+        var processRule = ProcessRuleOf(root);
 
-        Assert.Equal(expectedFinal, route["final"]!.GetValue<string>());
+        Assert.Equal(expectedFinal, root["route"]!["final"]!.GetValue<string>());
         Assert.Equal(expectedOutbound, processRule["outbound"]!.GetValue<string>());
         Assert.Equal(2, processRule["process_path_regex"]!.AsArray().Count);
     }
@@ -96,7 +151,7 @@ public class RuntimeConfigBuilderTests
     [Fact]
     public void Full_tunnel_needs_no_application_list()
     {
-        var route = Build(Fixtures.Settings(RouteMode.FullTunnel), [])["route"]!.AsObject();
+        var route = Build(Fixtures.Settings(RouteMode.FullTunnel), [], [])["route"]!.AsObject();
 
         Assert.Equal(RuntimeConfigBuilder.ProxyTag, route["final"]!.GetValue<string>());
         Assert.DoesNotContain(route["rules"]!.AsArray(), rule => rule!.AsObject().ContainsKey("process_path_regex"));
@@ -112,46 +167,38 @@ public class RuntimeConfigBuilderTests
     }
 
     [Fact]
-    public void Dns_queries_follow_the_routing_policy()
+    public void Ipv6_protection_controls_the_tunnel_address()
     {
-        var selected = Build(Fixtures.Settings(RouteMode.SelectedAppsOnly))["dns"]!.AsObject();
-        Assert.Equal(RuntimeConfigBuilder.TunnelResolverTag, selected["rules"]![0]!["server"]!.GetValue<string>());
-        Assert.Equal(RuntimeConfigBuilder.LocalResolverTag, selected["final"]!.GetValue<string>());
-
-        var excluded = Build(Fixtures.Settings(RouteMode.AllExceptSelected))["dns"]!.AsObject();
-        Assert.Equal(RuntimeConfigBuilder.LocalResolverTag, excluded["rules"]![0]!["server"]!.GetValue<string>());
-        Assert.Equal(RuntimeConfigBuilder.TunnelResolverTag, excluded["final"]!.GetValue<string>());
+        Assert.Equal(2, Build(Fixtures.Settings(ipv6: true))["inbounds"]![0]!["address"]!.AsArray().Count);
+        Assert.Single(Build(Fixtures.Settings(ipv6: false))["inbounds"]![0]!["address"]!.AsArray());
     }
 
     [Fact]
-    public void Ipv6_protection_controls_the_tunnel_address_and_strategy()
+    public void Local_network_access_covers_addresses_and_local_names()
     {
-        var withIpv6 = Build(Fixtures.Settings(ipv6: true));
-        Assert.Equal(2, withIpv6["inbounds"]![0]!["address"]!.AsArray().Count);
-        Assert.Equal("prefer_ipv4", withIpv6["dns"]!["strategy"]!.GetValue<string>());
+        var withoutLan = Build(Fixtures.Settings(allowLan: false))["route"]!["rules"]!.AsArray();
+        Assert.DoesNotContain(withoutLan, rule => rule!.AsObject().ContainsKey("ip_is_private"));
+        Assert.DoesNotContain(withoutLan, rule => rule!.AsObject().ContainsKey("domain_suffix"));
 
-        var withoutIpv6 = Build(Fixtures.Settings(ipv6: false));
-        Assert.Single(withoutIpv6["inbounds"]![0]!["address"]!.AsArray());
-        Assert.Equal("ipv4_only", withoutIpv6["dns"]!["strategy"]!.GetValue<string>());
-    }
+        var withLan = Build(Fixtures.Settings(allowLan: true))["route"]!["rules"]!.AsArray().OfType<JsonObject>().ToList();
+        var byAddress = withLan.Single(rule => rule.ContainsKey("ip_is_private"));
+        var byName = withLan.Single(rule => rule.ContainsKey("domain_suffix"));
 
-    [Fact]
-    public void Local_network_access_is_opt_in()
-    {
-        Assert.DoesNotContain(
-            Build(Fixtures.Settings(allowLan: false))["route"]!["rules"]!.AsArray(),
-            rule => rule!.AsObject().ContainsKey("ip_is_private"));
+        Assert.Equal(RuntimeConfigBuilder.DirectTag, byAddress["outbound"]!.GetValue<string>());
+        Assert.Equal(RuntimeConfigBuilder.DirectTag, byName["outbound"]!.GetValue<string>());
+        Assert.Contains(".local", byName["domain_suffix"]!.AsArray().Select(suffix => suffix!.GetValue<string>()));
 
-        Assert.Contains(
-            Build(Fixtures.Settings(allowLan: true))["route"]!["rules"]!.AsArray(),
-            rule => rule!.AsObject().ContainsKey("ip_is_private"));
+        // Both must be decided before the process rule, or a routed application loses its printer.
+        var processIndex = withLan.FindIndex(rule => rule.ContainsKey("process_path_regex"));
+        Assert.True(withLan.IndexOf(byAddress) < processIndex);
+        Assert.True(withLan.IndexOf(byName) < processIndex);
     }
 
     [Fact]
     public void WireGuard_profiles_are_emitted_as_endpoints()
     {
         var parsed = TunnelParser.Parse(Fixtures.WireGuardConf);
-        var runtime = RuntimeConfigBuilder.Build(parsed, Fixtures.Settings(), Fixtures.Apps);
+        var runtime = RuntimeConfigBuilder.Build(parsed, Fixtures.Settings(), Fixtures.Apps, [], FixedPorts);
         var root = JsonNode.Parse(runtime.Json)!.AsObject();
 
         Assert.Equal(RuntimeConfigBuilder.ProxyTag, root["endpoints"]![0]!["tag"]!.GetValue<string>());
@@ -162,23 +209,94 @@ public class RuntimeConfigBuilderTests
     public void Probe_and_control_ports_are_wired_into_the_config()
     {
         var parsed = TunnelParser.Parse(Fixtures.VlessReality);
-        var runtime = RuntimeConfigBuilder.Build(parsed, Fixtures.Settings(), Fixtures.Apps, 21080, 29090, "s3cret");
+        var runtime = RuntimeConfigBuilder.Build(parsed, Fixtures.Settings(), Fixtures.Apps, [], FixedPorts);
         var root = JsonNode.Parse(runtime.Json)!.AsObject();
 
         Assert.Equal(21080, root["inbounds"]![1]!["listen_port"]!.GetValue<int>());
         Assert.Equal("127.0.0.1:29090", root["experimental"]!["clash_api"]!["external_controller"]!.GetValue<string>());
         Assert.Equal("s3cret", root["experimental"]!["clash_api"]!["secret"]!.GetValue<string>());
         Assert.Equal("http://127.0.0.1:21080/", runtime.ProxyUri.ToString());
+        Assert.Empty(runtime.Bridges);
+    }
+
+    [Fact]
+    public void Bridge_routes_get_their_own_loopback_inbounds()
+    {
+        var pinned = new VpnProfile { Name = "Tokyo relay" };
+        var active = new VpnProfile { Name = "Frankfurt" };
+
+        BridgeRoute[] bridges =
+        [
+            BridgeRoute.Active(active),
+            BridgeRoute.Profile(pinned, TunnelParser.Parse(Fixtures.Trojan)),
+            BridgeRoute.Bypass()
+        ];
+
+        var parsed = TunnelParser.Parse(Fixtures.VlessReality);
+        var ports = new PortPlan(21080, 29090, "s3cret", [23000, 23001, 23002]);
+        var runtime = RuntimeConfigBuilder.Build(parsed, Fixtures.Settings(), Fixtures.Apps, bridges, ports);
+        var root = JsonNode.Parse(runtime.Json)!.AsObject();
+
+        var inbounds = root["inbounds"]!.AsArray().OfType<JsonObject>()
+            .Where(inbound => inbound["tag"]!.GetValue<string>().StartsWith("bridge-in-"))
+            .ToList();
+        Assert.Equal([23000, 23001, 23002], inbounds.Select(inbound => inbound["listen_port"]!.GetValue<int>()));
+        Assert.All(inbounds, inbound => Assert.Equal("127.0.0.1", inbound["listen"]!.GetValue<string>()));
+
+        var rules = root["route"]!["rules"]!.AsArray().OfType<JsonObject>()
+            .Where(rule => rule["inbound"]?.GetValue<string>().StartsWith("bridge-in-") == true)
+            .ToDictionary(rule => rule["inbound"]!.GetValue<string>(), rule => rule["outbound"]!.GetValue<string>());
+
+        // The active route reuses the tunnel's outbound, the pinned one gets its own, bypass goes direct.
+        Assert.Equal(RuntimeConfigBuilder.ProxyTag, rules["bridge-in-0"]);
+        Assert.Equal("bridge-1", rules["bridge-in-1"]);
+        Assert.Equal(RuntimeConfigBuilder.DirectTag, rules["bridge-in-2"]);
+
+        var pinnedOutbound = root["outbounds"]!.AsArray().OfType<JsonObject>()
+            .Single(node => node["tag"]!.GetValue<string>() == "bridge-1");
+        Assert.Equal("trojan", pinnedOutbound["type"]!.GetValue<string>());
+        Assert.Equal(RuntimeConfigBuilder.LocalResolverTag, pinnedOutbound["domain_resolver"]!.GetValue<string>());
+
+        Assert.Equal(
+            [BridgeKind.Active, BridgeKind.Profile, BridgeKind.Bypass],
+            runtime.Bridges.Select(binding => binding.Kind));
+        Assert.Equal(pinned.Id, runtime.Bridges[1].ProfileId);
+        Assert.Equal(23002, runtime.Bridges[2].Port);
+    }
+
+    [Fact]
+    public void Bridge_routes_come_before_the_routing_policy()
+    {
+        var root = Build(Fixtures.Settings(RouteMode.FullTunnel), [BridgeRoute.Bypass()]);
+        var rules = root["route"]!["rules"]!.AsArray().OfType<JsonObject>().ToList();
+
+        // A tab sent to "No VPN" has to win over "everything goes through the tunnel".
+        Assert.Contains(rules, rule => rule["inbound"]?.GetValue<string>() == "bridge-in-0");
+        Assert.Equal(RuntimeConfigBuilder.ProxyTag, root["route"]!["final"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void A_port_is_required_per_bridge_route()
+    {
+        var parsed = TunnelParser.Parse(Fixtures.VlessReality);
+
+        Assert.Throws<ArgumentException>(() =>
+            RuntimeConfigBuilder.Build(parsed, Fixtures.Settings(), Fixtures.Apps, [BridgeRoute.Bypass()], FixedPorts));
+    }
+
+    [Fact]
+    public void Reserved_ports_are_distinct()
+    {
+        var ports = RuntimeConfigBuilder.ReserveLoopbackPorts(6);
+
+        Assert.Equal(6, ports.Distinct().Count());
+        Assert.All(ports, port => Assert.InRange(port, 1024, 65535));
     }
 
     [Fact]
     public void Executable_paths_are_matched_case_insensitively()
     {
-        var route = Build(Fixtures.Settings())["route"]!.AsObject();
-        var pattern = route["rules"]!.AsArray()
-            .OfType<JsonObject>()
-            .Single(rule => rule.ContainsKey("process_path_regex"))["process_path_regex"]![0]!
-            .GetValue<string>();
+        var pattern = ProcessRuleOf(Build(Fixtures.Settings()))["process_path_regex"]![0]!.GetValue<string>();
 
         Assert.StartsWith("(?i)^", pattern);
         Assert.EndsWith("$", pattern);
@@ -201,11 +319,6 @@ public class RuntimeConfigBuilderTests
             new() { DisplayName = "Firefox again", Path = @"C:\PROGRAM FILES\MOZILLA FIREFOX\FIREFOX.EXE" }
         ];
 
-        var route = Build(Fixtures.Settings(), apps)["route"]!.AsObject();
-        var patterns = route["rules"]!.AsArray()
-            .OfType<JsonObject>()
-            .Single(rule => rule.ContainsKey("process_path_regex"))["process_path_regex"]!.AsArray();
-
-        Assert.Single(patterns);
+        Assert.Single(ProcessRuleOf(Build(Fixtures.Settings(), apps))["process_path_regex"]!.AsArray());
     }
 }

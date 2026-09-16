@@ -5,20 +5,30 @@ using System.Text;
 namespace RouteShield.Services;
 
 /// <summary>
-/// Owns the sing-box child process. The core is told to log to stdout rather than to a file
+/// Owns one sing-box child process. The core is told to log to stdout rather than to a file
 /// so its output can reach the Diagnostics view live; this class mirrors it to disk.
+/// The tunnel and the latency probe each hold their own instance.
 /// </summary>
 public sealed class CoreProcessService : IAsyncDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly string _label;
     private Process? _process;
+    private string? _configPath;
     private bool _stopRequested;
+
+    public CoreProcessService(string label = "sing-box")
+    {
+        _label = label;
+    }
 
     public event Action<string>? OutputReceived;
 
     public event Action<int>? Exited;
 
-    public string CorePath => Path.Combine(AppContext.BaseDirectory, "core", "sing-box.exe");
+    public static string CorePath => Path.Combine(AppContext.BaseDirectory, "core", "sing-box.exe");
+
+    public static bool IsCoreInstalled => File.Exists(CorePath);
 
     public bool IsRunning => _process is { HasExited: false };
 
@@ -57,6 +67,7 @@ public sealed class CoreProcessService : IAsyncDisposable
             RequireCore();
             _process?.Dispose();
             _stopRequested = false;
+            _configPath = configPath;
 
             var startInfo = new ProcessStartInfo(CorePath)
             {
@@ -81,7 +92,7 @@ public sealed class CoreProcessService : IAsyncDisposable
 
             if (!_process.Start())
             {
-                throw new InvalidOperationException("The sing-box core could not be started.");
+                throw new InvalidOperationException($"The {_label} core could not be started.");
             }
 
             _process.BeginOutputReadLine();
@@ -93,10 +104,10 @@ public sealed class CoreProcessService : IAsyncDisposable
             await Task.Delay(TimeSpan.FromMilliseconds(700));
             if (_process.HasExited)
             {
-                throw new InvalidOperationException($"The core stopped immediately (exit code {_process.ExitCode}).");
+                throw new InvalidOperationException($"The {_label} core stopped immediately (exit code {_process.ExitCode}).");
             }
 
-            AppLog.Write(LogCategory.Core, "sing-box started");
+            AppLog.Write(LogCategory.Core, $"{_label} started");
         }
         finally
         {
@@ -121,16 +132,18 @@ public sealed class CoreProcessService : IAsyncDisposable
                 }
                 catch (Exception exception) when (exception is InvalidOperationException or OperationCanceledException or System.ComponentModel.Win32Exception)
                 {
-                    AppLog.Write(LogCategory.Core, $"The core did not stop cleanly: {exception.Message}");
+                    AppLog.Write(LogCategory.Core, $"The {_label} core did not stop cleanly: {exception.Message}");
                 }
+
+                AppLog.Write(LogCategory.Core, $"{_label} stopped");
             }
 
             _process?.Dispose();
             _process = null;
             StartedAt = null;
 
-            TryDeleteRuntimeConfig();
-            AppLog.Write(LogCategory.Core, "sing-box stopped");
+            TryDelete(_configPath);
+            _configPath = null;
         }
         finally
         {
@@ -184,13 +197,18 @@ public sealed class CoreProcessService : IAsyncDisposable
         }
     }
 
-    private static void TryDeleteRuntimeConfig()
+    private static void TryDelete(string? path)
     {
+        if (path is null)
+        {
+            return;
+        }
+
         try
         {
-            if (File.Exists(AppPaths.RuntimeConfig))
+            if (File.Exists(path))
             {
-                File.Delete(AppPaths.RuntimeConfig);
+                File.Delete(path);
             }
         }
         catch (IOException)
@@ -201,16 +219,16 @@ public sealed class CoreProcessService : IAsyncDisposable
         }
     }
 
-    private void RequireCore()
+    private static void RequireCore()
     {
-        if (!File.Exists(CorePath))
+        if (!IsCoreInstalled)
         {
             throw new FileNotFoundException(
                 "sing-box.exe is missing from the core folder. Reinstall RouteShield or run build.cmd.", CorePath);
         }
     }
 
-    private async Task<(int ExitCode, string Output)> CaptureAsync(TimeSpan timeout, params string[] arguments)
+    private static async Task<(int ExitCode, string Output)> CaptureAsync(TimeSpan timeout, params string[] arguments)
     {
         var startInfo = new ProcessStartInfo(CorePath)
         {

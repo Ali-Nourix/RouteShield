@@ -16,6 +16,11 @@
 - **Logs.** Everything written to the log is redacted first: keys, passwords, UUIDs, tokens,
   share links, and the path and query of any URL. The diagnostics bundle contains only redacted
   logs and a short environment summary.
+- **Browser bridge.** The API the extensions read is bound to 127.0.0.1, answers one GET,
+  sets no CORS headers and refuses any request whose Host header is not its own loopback
+  address, which closes the DNS-rebinding route to a local API. It returns profile names and
+  port numbers, never credentials. The proxies themselves are loopback SOCKS/HTTP inbounds of
+  the running core.
 - **Supply chain.** The build downloads the pinned sing-box release from the official repository
   over HTTPS and verifies it against the digest GitHub publishes for that asset.
 
@@ -29,6 +34,9 @@
   while the core reads it, and deleted when the core stops.
 - The Clash API listens on loopback with a token that changes every run, but any process running
   as your user can read that token out of the runtime configuration.
+- Any local process can use the bridge proxies while the tunnel is up, the same way any local
+  process could already reach the exit-IP probe inbound. They carry no more than the tunnel
+  itself does.
 - The build is not code-signed, and the project has had no independent audit.
 
 ## Emergency cleanup

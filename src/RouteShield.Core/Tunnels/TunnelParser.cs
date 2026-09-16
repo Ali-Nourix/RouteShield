@@ -74,13 +74,16 @@ public static class TunnelParser
         var uri = ParseUri(text, "VLESS");
         var query = ParseQuery(uri.Query);
 
+        // xudp is how Xray servers carry UDP over VLESS; without it QUIC, DNS and games
+        // inside the tunnel fall back to one connection per destination, or fail outright.
         var outbound = new JsonObject
         {
             ["type"] = "vless",
             ["tag"] = ProxyTag,
             ["server"] = uri.Host,
             ["server_port"] = ParsePort(uri),
-            ["uuid"] = Uri.UnescapeDataString(uri.UserInfo)
+            ["uuid"] = Uri.UnescapeDataString(uri.UserInfo),
+            ["packet_encoding"] = "xudp"
         };
 
         SetIfPresent(outbound, "flow", Lookup(query, "flow"));

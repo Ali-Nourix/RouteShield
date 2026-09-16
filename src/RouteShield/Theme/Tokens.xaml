@@ -73,10 +73,11 @@
     <FontFamily x:Key="HeadingFont">pack://application:,,,/RouteShield;component/Assets/Fonts/#Archivo ExtraBold</FontFamily>
     <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, Courier New</FontFamily>
 
+    <!-- Every shape is a rectangle with a softened corner; nothing rounds into a pill or a dot. -->
+    <CornerRadius x:Key="RadiusXs">5</CornerRadius>
     <CornerRadius x:Key="RadiusSm">8</CornerRadius>
     <CornerRadius x:Key="RadiusMd">10</CornerRadius>
     <CornerRadius x:Key="RadiusLg">14</CornerRadius>
-    <CornerRadius x:Key="RadiusPill">999</CornerRadius>
 
     <sys:Double x:Key="Space1">4</sys:Double>
     <sys:Double x:Key="Space2">8</sys:Double>

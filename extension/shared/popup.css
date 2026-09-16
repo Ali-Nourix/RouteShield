@@ -1,0 +1,192 @@
+/* Modernist, as in the desktop app: paper ground, ink, one signal red, Archivo set heavy. */
+@font-face {
+  font-family: "Archivo";
+  font-weight: 400;
+  src: url("fonts/Archivo-Regular.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Archivo";
+  font-weight: 800;
+  src: url("fonts/Archivo-ExtraBold.ttf") format("truetype");
+}
+
+:root {
+  --bg: #f3f2f2;
+  --surface: #eae9e9;
+  --ink: #201e1d;
+  --accent: #ec3013;
+  --accent-700: #ae1800;
+  --accent-100: #fff2ef;
+  --n400: #bab6b6;
+  --n500: #9b9797;
+  --n600: #7d7979;
+  --n700: #605d5d;
+  --divider: rgba(32, 30, 29, 0.4);
+  --hover: rgba(32, 30, 29, 0.07);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  width: 340px;
+  background: var(--bg);
+  color: var(--ink);
+  font: 13.5px/1.45 "Archivo", system-ui, sans-serif;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 2px solid var(--divider);
+}
+
+.brand { display: flex; align-items: center; gap: 9px; }
+
+.wordmark {
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px;
+  border-radius: 5px;
+  border: 1px solid var(--divider);
+  font-size: 11px;
+  max-width: 190px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip .mark {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--n500);
+  flex: none;
+}
+
+.chip-live { border-color: var(--ink); }
+.chip-live .mark { background: var(--accent); }
+.chip-off .mark { background: var(--n400); }
+
+.subject { padding: 16px 14px 8px; }
+
+.kicker {
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--n600);
+}
+
+.subject-name {
+  margin-top: 6px;
+  font-weight: 800;
+  font-size: 20px;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.choices { padding: 0 14px; }
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 0;
+  border: 0;
+  border-bottom: 1px solid var(--divider);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.choice:hover { background: var(--hover); }
+.choice:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.choice[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+.choice .box {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  border: 1.5px solid var(--n500);
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+
+.choice[aria-checked="true"] .box {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.choice[aria-checked="true"] .box::after {
+  content: "";
+  width: 8px;
+  height: 5px;
+  border-left: 1.8px solid var(--bg);
+  border-bottom: 1.8px solid var(--bg);
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+.choice .text { flex: 1; min-width: 0; }
+.choice .title { font-size: 13.5px; }
+.choice .hint { font-size: 11.5px; color: var(--n700); margin-top: 1px; }
+
+.choice .tag {
+  font-weight: 800;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: var(--accent-100);
+  color: var(--accent-700);
+  flex: none;
+}
+
+.note {
+  margin: 10px 14px 0;
+  font-size: 11.5px;
+  color: var(--n700);
+  min-height: 1.4em;
+}
+
+.note.warn { color: var(--accent-700); }
+
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding: 10px 14px 12px;
+  border-top: 2px solid var(--divider);
+  font-size: 11px;
+  color: var(--n600);
+}
+
+.ghost {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: 800 11px "Archivo", system-ui, sans-serif;
+  letter-spacing: 0.02em;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ghost:hover { background: rgba(236, 48, 19, 0.1); }

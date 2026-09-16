@@ -12,7 +12,7 @@
             <TextBlock Style="{StaticResource RowLabel}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                        Text="{Binding Label, ElementName=Row}" />
 
-            <Border Grid.Column="1" Padding="9,4" CornerRadius="{StaticResource RadiusPill}">
+            <Border Grid.Column="1" Padding="9,4" CornerRadius="{StaticResource RadiusXs}">
                 <Border.Style>
                     <Style TargetType="Border">
                         <Setter Property="Background" Value="Transparent" />

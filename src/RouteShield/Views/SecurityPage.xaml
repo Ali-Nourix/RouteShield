@@ -47,10 +47,10 @@
                 <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
                     <CheckBox Style="{StaticResource SettingRow}" IsChecked="{Binding DnsProtection, Mode=TwoWay}">
                         <StackPanel>
-                            <TextBlock Style="{StaticResource SettingName}" Text="Secure DNS through the tunnel" />
+                            <TextBlock Style="{StaticResource SettingName}" Text="Secure DNS (answer names inside RouteShield)" />
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,3,0,0" MaxWidth="720"
                                        HorizontalAlignment="Left"
-                                       Text="Routed applications resolve over DNS-over-HTTPS inside the tunnel; everything else keeps the system resolver." />
+                                       Text="Names are answered instantly from a private range and the name itself travels to the proxy, so a blocked or poisoned resolver cannot break a routed application. Direct traffic still resolves on your own connection." />
                         </StackPanel>
                     </CheckBox>
                 </Border>
@@ -115,6 +115,30 @@
                                       Content="Minimise to the notification area" />
                         </Border>
                     </StackPanel>
+                </Grid>
+
+                <Border Margin="0,26,0,0" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="Browser extension" />
+                </Border>
+
+                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                    <CheckBox Style="{StaticResource SettingRow}" IsChecked="{Binding BrowserBridgeEnabled, Mode=TwoWay}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SettingName}" Text="Browser bridge" />
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,3,0,0" MaxWidth="720"
+                                       HorizontalAlignment="Left"
+                                       Text="Lets the RouteShield add-on choose a profile per tab (Firefox) or per site (Chrome), or take a tab out of the VPN entirely. Everything stays on 127.0.0.1; nothing is opened to the network." />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,6,0,0" Text="{Binding BridgeSummary}" />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0" Text="{Binding PinnedSummary}" />
+                        </StackPanel>
+                    </CheckBox>
+                </Border>
+
+                <Grid Margin="0,12,0,0">
+                    <TextBlock Style="{StaticResource HelpText}" VerticalAlignment="Center" MaxWidth="620" HorizontalAlignment="Left"
+                               Text="Firefox: about:debugging → Load Temporary Add-on, or install the signed build from Releases. Chrome: chrome://extensions → Developer mode → Load unpacked." />
+                    <Button Style="{StaticResource SecondaryButton}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                            Command="{Binding OpenExtensionFolderCommand}" Content="Open extension folder" />
                 </Grid>
             </StackPanel>
         </ScrollViewer>

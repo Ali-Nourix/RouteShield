@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Windows.Data;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using RouteShield.Services;
@@ -19,6 +21,8 @@ public enum ShellPage
     Diagnostics
 }
 
+public sealed record SubscriptionEdit(string Name, string Url, bool Remove);
+
 /// <summary>Window-level services the view model needs but should not construct itself.</summary>
 public interface IUiHost
 {
@@ -27,6 +31,9 @@ public interface IUiHost
     Task<bool> ConfirmAsync(string kicker, string title, string body, string confirmLabel);
 
     IReadOnlyList<RunningProcessItem>? PickRunningProcesses();
+
+    /// <summary>Opens the subscription dialog; null when the user backed out.</summary>
+    SubscriptionEdit? EditSubscription(VpnSubscription? existing);
 }
 
 public sealed class ShellViewModel : Observable
@@ -34,28 +41,34 @@ public sealed class ShellViewModel : Observable
     private readonly SettingsStore _store = new();
     private readonly SubscriptionService _subscriptions = new();
     private readonly TunnelController _tunnel = new();
+    private readonly LatencyTester _latency = new();
+    private readonly BrowserBridgeServer _bridge;
     private readonly DispatcherTimer _clock;
     private readonly IUiHost _host;
+    private readonly Dictionary<Guid, LibrarySection> _sections = [];
+    private readonly Dictionary<Guid, (LatencyState State, int? Milliseconds, string? Failure)> _latencyMemory = [];
 
     private AppSettings _settings = new();
     private bool _loaded;
+    private bool _rebuildingLibrary;
+    private CancellationTokenSource? _latencyRun;
 
     private ShellPage _page = ShellPage.Dashboard;
     private VpnProfile? _selectedProfile;
-    private VpnSubscription? _selectedSubscription;
+    private ProfileItem? _selectedItem;
     private string _editorName = string.Empty;
     private string _editorConfig = string.Empty;
     private string _editorFormat = "NO PROFILE";
-    private string _subscriptionName = string.Empty;
-    private string _subscriptionUrl = string.Empty;
     private string _logFilter = string.Empty;
     private string _logCategory = "All";
-    private string _processFilter = string.Empty;
     private string _busyMessage = string.Empty;
+    private bool _sortByLatency;
+    private bool _isTestingLatency;
 
     public ShellViewModel(IUiHost host)
     {
         _host = host;
+        _bridge = new BrowserBridgeServer(() => new BridgeSnapshot(IsConnected, _tunnel.ActiveProfile?.Name, _tunnel.Bridges));
 
         ConnectCommand = new AsyncRelayCommand(ConnectAsync, () => CanConnect);
         DisconnectCommand = new AsyncRelayCommand(DisconnectAsync);
@@ -69,9 +82,13 @@ public sealed class ShellViewModel : Observable
         DeleteProfileCommand = new AsyncRelayCommand(DeleteProfileAsync, () => SelectedProfile is not null);
         DetectFormatCommand = new RelayCommand(DetectFormat);
 
-        SaveSubscriptionCommand = new AsyncRelayCommand(SaveSubscriptionAsync);
-        RemoveSubscriptionCommand = new AsyncRelayCommand(RemoveSubscriptionAsync, () => SelectedSubscription is not null);
+        AddSubscriptionCommand = new AsyncRelayCommand(AddSubscriptionAsync);
+        EditSubscriptionCommand = new AsyncRelayCommand(EditSubscriptionAsync);
+        RefreshSubscriptionCommand = new AsyncRelayCommand(RefreshOneSubscriptionAsync);
         RefreshSubscriptionsCommand = new AsyncRelayCommand(RefreshSubscriptionsAsync);
+
+        TestLatencyCommand = new AsyncRelayCommand(TestLatencyAsync, () => !IsTestingLatency && Library.Count > 0);
+        CancelLatencyCommand = new RelayCommand(() => _latencyRun?.Cancel(), () => IsTestingLatency);
 
         AddRunningProcessCommand = new AsyncRelayCommand(AddRunningProcessesAsync);
         BrowseExecutableCommand = new AsyncRelayCommand(BrowseExecutableAsync);
@@ -79,10 +96,10 @@ public sealed class ShellViewModel : Observable
 
         ExportDiagnosticsCommand = new AsyncRelayCommand(ExportDiagnosticsAsync);
         OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
+        OpenExtensionFolderCommand = new RelayCommand(OpenExtensionFolder);
         ClearLogCommand = new RelayCommand(ClearLog);
         ResetSettingsCommand = new AsyncRelayCommand(ResetSettingsAsync);
         FinishFirstRunCommand = new AsyncRelayCommand(FinishFirstRunAsync);
-
         SetLogCategoryCommand = new RelayCommand(parameter => LogCategoryFilter = parameter?.ToString() ?? "All");
 
         NavigateCommand = new RelayCommand(
@@ -93,6 +110,12 @@ public sealed class ShellViewModel : Observable
                     Page = page;
                 }
             });
+
+        LibraryView = (ListCollectionView)CollectionViewSource.GetDefaultView(Library);
+        LibraryView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ProfileItem.Section)));
+        LibraryView.IsLiveSorting = true;
+        LibraryView.LiveSortingProperties.Add(nameof(ProfileItem.SortKey));
+        ApplyLibrarySort();
 
         _tunnel.Changed += OnTunnelChanged;
         AppLog.EntryWritten += OnLogEntry;
@@ -107,33 +130,8 @@ public sealed class ShellViewModel : Observable
     public ShellPage Page
     {
         get => _page;
-        set
-        {
-            if (Set(ref _page, value))
-            {
-                Raise(nameof(PageKicker));
-                Raise(nameof(PageTitle));
-            }
-        }
+        set => Set(ref _page, value);
     }
-
-    public string PageKicker => Page switch
-    {
-        ShellPage.Dashboard => "Control centre",
-        ShellPage.Profiles => "Library",
-        ShellPage.Applications => "Split tunnel",
-        ShellPage.Security => "Preferences",
-        _ => "Support"
-    };
-
-    public string PageTitle => Page switch
-    {
-        ShellPage.Dashboard => "Connection",
-        ShellPage.Profiles => "Profiles & subscriptions",
-        ShellPage.Applications => "Application routing",
-        ShellPage.Security => "Security & behaviour",
-        _ => "Diagnostics"
-    };
 
     // ══ Collections ══
 
@@ -143,10 +141,13 @@ public sealed class ShellViewModel : Observable
 
     public ObservableCollection<AppTarget> Apps { get; } = [];
 
+    public ObservableCollection<ProfileItem> Library { get; } = [];
+
+    public ListCollectionView LibraryView { get; }
+
     public ObservableCollection<LogEntry> VisibleLog { get; } = [];
 
-    public IReadOnlyList<string> LogCategories { get; } =
-        ["All", .. Enum.GetNames<LogCategory>()];
+    public IReadOnlyList<string> LogCategories { get; } = ["All", .. Enum.GetNames<LogCategory>()];
 
     public IReadOnlyList<RouteMode> RouteModes { get; } = Enum.GetValues<RouteMode>();
 
@@ -172,8 +173,6 @@ public sealed class ShellViewModel : Observable
 
     public bool IsTransitioning => State is TunnelState.Connecting or TunnelState.Disconnecting or TunnelState.Reconnecting;
 
-    public bool IsReconnecting => State == TunnelState.Reconnecting;
-
     public bool IsKillSwitchHolding => _tunnel.KillSwitchArmed && State != TunnelState.Connected;
 
     public bool CanConnect => SelectedProfile is not null && State is TunnelState.Disconnected or TunnelState.Failed;
@@ -184,11 +183,11 @@ public sealed class ShellViewModel : Observable
 
     public string LatencyText => _tunnel.LatencyMilliseconds?.ToString() ?? "—";
 
-    public string ThroughputText => IsConnected
-        ? _tunnel.ThroughputMegabytesPerSecond.ToString("0.0")
-        : "—";
+    public string ThroughputText => IsConnected ? _tunnel.ThroughputMegabytesPerSecond.ToString("0.0") : "—";
 
     public string ExitIpText => _tunnel.ExitIp ?? "—";
+
+    public string? ProbeFailure => _tunnel.ProbeFailure is { } failure ? $"Probe failed · {failure}" : null;
 
     public string CoreVersionText => _tunnel.CoreVersion;
 
@@ -213,6 +212,40 @@ public sealed class ShellViewModel : Observable
     public bool IsBusy => BusyMessage.Length > 0;
 
     public bool ShowFirstRun => _settings.FirstRun;
+
+    // ══ Browser bridge ══
+
+    public string BridgeSummary
+    {
+        get
+        {
+            if (!BrowserBridgeEnabled)
+            {
+                return "Browser bridge is off";
+            }
+
+            if (_bridge.LastError is { } error)
+            {
+                return error;
+            }
+
+            var routes = _tunnel.Bridges.Count;
+            return IsConnected
+                ? $"Browser bridge on 127.0.0.1:{_settings.BrowserBridgePort} · {routes} route(s) for the extension"
+                : $"Browser bridge on 127.0.0.1:{_settings.BrowserBridgePort} · routes appear when the tunnel is up";
+        }
+    }
+
+    public string PinnedSummary
+    {
+        get
+        {
+            var pinned = Profiles.Count(profile => profile.BrowserPinned);
+            return pinned == 0
+                ? "Only the active profile and \"No VPN\" are offered to the extension."
+                : $"{pinned} pinned profile(s) are offered to the extension beside the active one.";
+        }
+    }
 
     // ══ Settings ══
 
@@ -271,6 +304,33 @@ public sealed class ShellViewModel : Observable
         set => ApplySetting(settings => settings.CloseToTray = value, _settings.CloseToTray == value);
     }
 
+    public bool BrowserBridgeEnabled
+    {
+        get => _settings.BrowserBridgeEnabled;
+        set
+        {
+            if (_settings.BrowserBridgeEnabled == value)
+            {
+                return;
+            }
+
+            _settings.BrowserBridgeEnabled = value;
+            Raise(nameof(BrowserBridgeEnabled));
+
+            if (value)
+            {
+                _bridge.Start(_settings.BrowserBridgePort);
+            }
+            else
+            {
+                _bridge.Stop();
+            }
+
+            Raise(nameof(BridgeSummary));
+            QueueSave();
+        }
+    }
+
     public bool StartWithWindows
     {
         get => _settings.StartWithWindows;
@@ -287,7 +347,26 @@ public sealed class ShellViewModel : Observable
         }
     }
 
-    // ══ Profiles ══
+    // ══ Library ══
+
+    public ProfileItem? SelectedItem
+    {
+        get => _selectedItem;
+        set
+        {
+            // Clearing the library makes the list push null through this binding; that is
+            // a side effect of the rebuild, not a choice, and must not unset the profile.
+            if (_rebuildingLibrary)
+            {
+                return;
+            }
+
+            if (Set(ref _selectedItem, value))
+            {
+                SelectedProfile = value?.Profile;
+            }
+        }
+    }
 
     public VpnProfile? SelectedProfile
     {
@@ -304,8 +383,17 @@ public sealed class ShellViewModel : Observable
             EditorConfig = value?.ConfigText ?? string.Empty;
             EditorFormat = value?.Format.ToUpperInvariant() ?? "NO PROFILE";
 
+            var item = Library.FirstOrDefault(candidate => candidate.Profile == value);
+            if (!ReferenceEquals(item, _selectedItem))
+            {
+                _selectedItem = item;
+                Raise(nameof(SelectedItem));
+            }
+
             Raise(nameof(CanConnect));
             Raise(nameof(SelectedProfileLabel));
+            Raise(nameof(SelectedProfilePinned));
+            Raise(nameof(HasSelectedProfile));
             ConnectCommand.RaiseCanExecuteChanged();
             ValidateCommand.RaiseCanExecuteChanged();
             DeleteProfileCommand.RaiseCanExecuteChanged();
@@ -313,9 +401,68 @@ public sealed class ShellViewModel : Observable
         }
     }
 
+    public bool HasSelectedProfile => SelectedProfile is not null;
+
     public string SelectedProfileLabel => SelectedProfile is null
         ? "No profile selected"
         : $"{SelectedProfile.Name} · {SelectedProfile.Format}";
+
+    public bool SelectedProfilePinned
+    {
+        get => SelectedProfile?.BrowserPinned ?? false;
+        set
+        {
+            if (SelectedProfile is null || SelectedProfile.BrowserPinned == value)
+            {
+                return;
+            }
+
+            SelectedProfile.BrowserPinned = value;
+            Raise(nameof(SelectedProfilePinned));
+            Raise(nameof(PinnedSummary));
+            QueueSave();
+        }
+    }
+
+    public bool SortByLatency
+    {
+        get => _sortByLatency;
+        set
+        {
+            if (Set(ref _sortByLatency, value))
+            {
+                ApplyLibrarySort();
+            }
+        }
+    }
+
+    public bool IsTestingLatency
+    {
+        get => _isTestingLatency;
+        private set
+        {
+            if (Set(ref _isTestingLatency, value))
+            {
+                TestLatencyCommand.RaiseCanExecuteChanged();
+                CancelLatencyCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string LibrarySummary
+    {
+        get
+        {
+            var subscriptions = Subscriptions.Count switch
+            {
+                0 => "no subscriptions",
+                1 => "1 subscription",
+                var count => $"{count} subscriptions"
+            };
+
+            return $"{Profiles.Count} profile(s) · {subscriptions}";
+        }
+    }
 
     public string EditorName
     {
@@ -335,43 +482,7 @@ public sealed class ShellViewModel : Observable
         private set => Set(ref _editorFormat, value);
     }
 
-    // ══ Subscriptions ══
-
-    public VpnSubscription? SelectedSubscription
-    {
-        get => _selectedSubscription;
-        set
-        {
-            if (!Set(ref _selectedSubscription, value))
-            {
-                return;
-            }
-
-            SubscriptionName = value?.Name ?? string.Empty;
-            SubscriptionUrl = value?.Url ?? string.Empty;
-            RemoveSubscriptionCommand.RaiseCanExecuteChanged();
-        }
-    }
-
-    public string SubscriptionName
-    {
-        get => _subscriptionName;
-        set => Set(ref _subscriptionName, value);
-    }
-
-    public string SubscriptionUrl
-    {
-        get => _subscriptionUrl;
-        set => Set(ref _subscriptionUrl, value);
-    }
-
     // ══ Applications ══
-
-    public string ProcessFilter
-    {
-        get => _processFilter;
-        set => Set(ref _processFilter, value);
-    }
 
     public string AppSummary
     {
@@ -439,11 +550,17 @@ public sealed class ShellViewModel : Observable
 
     public RelayCommand DetectFormatCommand { get; }
 
-    public AsyncRelayCommand SaveSubscriptionCommand { get; }
+    public AsyncRelayCommand AddSubscriptionCommand { get; }
 
-    public AsyncRelayCommand RemoveSubscriptionCommand { get; }
+    public AsyncRelayCommand EditSubscriptionCommand { get; }
+
+    public AsyncRelayCommand RefreshSubscriptionCommand { get; }
 
     public AsyncRelayCommand RefreshSubscriptionsCommand { get; }
+
+    public AsyncRelayCommand TestLatencyCommand { get; }
+
+    public RelayCommand CancelLatencyCommand { get; }
 
     public AsyncRelayCommand AddRunningProcessCommand { get; }
 
@@ -454,6 +571,8 @@ public sealed class ShellViewModel : Observable
     public AsyncRelayCommand ExportDiagnosticsCommand { get; }
 
     public RelayCommand OpenLogFolderCommand { get; }
+
+    public RelayCommand OpenExtensionFolderCommand { get; }
 
     public RelayCommand ClearLogCommand { get; }
 
@@ -487,6 +606,8 @@ public sealed class ShellViewModel : Observable
             Apps.Add(app);
         }
 
+        RebuildLibrary();
+
         SelectedProfile = Profiles.FirstOrDefault(profile => profile.Id == _settings.SelectedProfileId)
                           ?? Profiles.FirstOrDefault();
 
@@ -494,11 +615,17 @@ public sealed class ShellViewModel : Observable
         RaiseAllSettings();
         RebuildLog();
 
+        if (_settings.BrowserBridgeEnabled)
+        {
+            _bridge.Start(_settings.BrowserBridgePort);
+            Raise(nameof(BridgeSummary));
+        }
+
         await _tunnel.LoadCoreVersionAsync();
 
-        if (!_tunnel.IsCoreInstalled)
+        if (!CoreProcessService.IsCoreInstalled)
         {
-            AppLog.Write(LogCategory.Core, $"sing-box.exe was not found at {_tunnel.CorePath}");
+            AppLog.Write(LogCategory.Core, $"sing-box.exe was not found at {CoreProcessService.CorePath}");
         }
 
         if (_settings.AutoConnect && CanConnect)
@@ -510,6 +637,8 @@ public sealed class ShellViewModel : Observable
     public async Task ShutdownAsync()
     {
         _clock.Stop();
+        _latencyRun?.Cancel();
+        _bridge.Dispose();
         await _tunnel.DisposeAsync();
         _subscriptions.Dispose();
         await SaveAsync();
@@ -536,7 +665,8 @@ public sealed class ShellViewModel : Observable
         try
         {
             BusyMessage = "Starting the tunnel";
-            await _tunnel.ConnectAsync(SelectedProfile, _settings, [.. Apps]);
+            var pinned = Profiles.Where(profile => profile.BrowserPinned).ToList();
+            await _tunnel.ConnectAsync(SelectedProfile, _settings, [.. Apps], pinned);
         }
         catch (Exception exception) when (IsExpected(exception))
         {
@@ -605,6 +735,7 @@ public sealed class ShellViewModel : Observable
     {
         var profile = new VpnProfile { Name = "New profile" };
         Profiles.Add(profile);
+        RebuildLibrary();
         SelectedProfile = profile;
         Page = ShellPage.Profiles;
     }
@@ -636,6 +767,7 @@ public sealed class ShellViewModel : Observable
             };
 
             Profiles.Add(profile);
+            RebuildLibrary();
             SelectedProfile = profile;
             await SaveAsync();
 
@@ -697,6 +829,7 @@ public sealed class ShellViewModel : Observable
         }
 
         Profiles.Remove(profile);
+        RebuildLibrary();
         SelectedProfile = Profiles.FirstOrDefault();
         await SaveAsync();
     }
@@ -705,67 +838,99 @@ public sealed class ShellViewModel : Observable
 
     // ══ Subscription actions ══
 
-    private async Task SaveSubscriptionAsync()
+    private async Task AddSubscriptionAsync()
     {
-        var url = SubscriptionUrl.Trim();
-        if (url.Length == 0)
+        if (_host.EditSubscription(null) is not { Remove: false } edit)
         {
-            await _host.AlertAsync("Subscription", "Enter an HTTPS address", "A subscription URL must start with https://.");
             return;
         }
 
-        var subscription = SelectedSubscription;
-        if (subscription is null || !string.Equals(subscription.Url, url, StringComparison.Ordinal))
-        {
-            subscription = Subscriptions.FirstOrDefault(item => string.Equals(item.Url, url, StringComparison.Ordinal));
-        }
+        var subscription = Subscriptions.FirstOrDefault(item => string.Equals(item.Url, edit.Url, StringComparison.Ordinal))
+                           ?? new VpnSubscription();
 
-        if (subscription is null)
+        if (!Subscriptions.Contains(subscription))
         {
-            subscription = new VpnSubscription();
             Subscriptions.Add(subscription);
         }
 
-        subscription.Name = string.IsNullOrWhiteSpace(SubscriptionName) ? "Subscription" : SubscriptionName.Trim();
-        subscription.Url = url;
-        SelectedSubscription = subscription;
+        subscription.Name = edit.Name;
+        subscription.Url = edit.Url;
 
         await RefreshSubscriptionAsync(subscription);
+        RebuildLibrary();
         await SaveAsync();
     }
 
-    private async Task RemoveSubscriptionAsync()
+    private async Task EditSubscriptionAsync(object? parameter)
     {
-        if (SelectedSubscription is not { } subscription)
+        if (parameter is not VpnSubscription subscription || _host.EditSubscription(subscription) is not { } edit)
         {
             return;
         }
 
-        var confirmed = await _host.ConfirmAsync(
-            "Remove subscription",
-            $"Remove \"{subscription.Name}\"?",
-            "Profiles that came from this subscription are removed with it.",
-            "Remove");
-
-        if (!confirmed)
+        if (edit.Remove)
         {
+            var confirmed = await _host.ConfirmAsync(
+                "Remove subscription",
+                $"Remove \"{subscription.Name}\"?",
+                "Profiles that came from this subscription are removed with it.",
+                "Remove");
+
+            if (!confirmed)
+            {
+                return;
+            }
+
+            foreach (var profile in Profiles.Where(item => item.SubscriptionId == subscription.Id).ToList())
+            {
+                Profiles.Remove(profile);
+            }
+
+            Subscriptions.Remove(subscription);
+            _sections.Remove(subscription.Id);
+            RebuildLibrary();
+
+            if (SelectedProfile is null || !Profiles.Contains(SelectedProfile))
+            {
+                SelectedProfile = Profiles.FirstOrDefault();
+            }
+
+            await SaveAsync();
             return;
         }
 
-        foreach (var profile in Profiles.Where(item => item.SubscriptionId == subscription.Id).ToList())
+        var urlChanged = !string.Equals(subscription.Url, edit.Url, StringComparison.Ordinal);
+        subscription.Name = edit.Name;
+        subscription.Url = edit.Url;
+        _sections.Remove(subscription.Id);
+
+        if (urlChanged)
         {
-            Profiles.Remove(profile);
+            await RefreshSubscriptionAsync(subscription);
         }
 
-        Subscriptions.Remove(subscription);
-        SelectedSubscription = null;
-
-        if (SelectedProfile is null || !Profiles.Contains(SelectedProfile))
-        {
-            SelectedProfile = Profiles.FirstOrDefault();
-        }
-
+        RebuildLibrary();
         await SaveAsync();
+    }
+
+    private async Task RefreshOneSubscriptionAsync(object? parameter)
+    {
+        if (parameter is not VpnSubscription subscription)
+        {
+            return;
+        }
+
+        BusyMessage = $"Refreshing {subscription.Name}";
+        try
+        {
+            await RefreshSubscriptionAsync(subscription);
+            RebuildLibrary();
+            await SaveAsync();
+        }
+        finally
+        {
+            BusyMessage = string.Empty;
+        }
     }
 
     private async Task RefreshSubscriptionsAsync()
@@ -783,6 +948,7 @@ public sealed class ShellViewModel : Observable
                 await RefreshSubscriptionAsync(subscription);
             }
 
+            RebuildLibrary();
             await SaveAsync();
         }
         finally
@@ -811,10 +977,15 @@ public sealed class ShellViewModel : Observable
         }
     }
 
+    /// <summary>
+    /// Swaps a subscription's profiles for the freshly fetched list while keeping what the user
+    /// attached to them: the selection, and which ones were pinned for the browser.
+    /// </summary>
     private int ReplaceSubscriptionProfiles(VpnSubscription subscription, IReadOnlyList<SubscriptionEntry> entries)
     {
         var selectedName = SelectedProfile?.Name;
         var owned = Profiles.Where(profile => profile.SubscriptionId == subscription.Id).ToList();
+        var pinnedNames = owned.Where(profile => profile.BrowserPinned).Select(profile => profile.Name).ToHashSet();
 
         foreach (var profile in owned)
         {
@@ -834,15 +1005,14 @@ public sealed class ShellViewModel : Observable
                 continue;
             }
 
-            var profile = new VpnProfile
+            Profiles.Add(new VpnProfile
             {
                 Name = entry.Name,
                 Format = format,
                 ConfigText = entry.Config,
-                SubscriptionId = subscription.Id
-            };
-
-            Profiles.Add(profile);
+                SubscriptionId = subscription.Id,
+                BrowserPinned = pinnedNames.Contains(entry.Name)
+            });
             added++;
         }
 
@@ -852,6 +1022,145 @@ public sealed class ShellViewModel : Observable
         }
 
         return added;
+    }
+
+    // ══ Library ══
+
+    private void RebuildLibrary()
+    {
+        foreach (var item in Library)
+        {
+            _latencyMemory[item.Profile.Id] = item.Snapshot();
+        }
+
+        _rebuildingLibrary = true;
+        try
+        {
+            Library.Clear();
+
+            foreach (var profile in Profiles)
+            {
+                var item = new ProfileItem(profile, SectionFor(profile));
+                if (_latencyMemory.TryGetValue(profile.Id, out var remembered))
+                {
+                    item.Restore(remembered.State, remembered.Milliseconds, remembered.Failure);
+                }
+
+                Library.Add(item);
+            }
+        }
+        finally
+        {
+            _rebuildingLibrary = false;
+        }
+
+        _selectedItem = Library.FirstOrDefault(item => item.Profile == SelectedProfile);
+        Raise(nameof(SelectedItem));
+        Raise(nameof(LibrarySummary));
+        Raise(nameof(PinnedSummary));
+        Raise(nameof(StateWord));
+        Raise(nameof(StatusDetail));
+        TestLatencyCommand.RaiseCanExecuteChanged();
+    }
+
+    private LibrarySection SectionFor(VpnProfile profile)
+    {
+        if (profile.SubscriptionId is not { } id)
+        {
+            return LibrarySection.Manual;
+        }
+
+        var subscription = Subscriptions.FirstOrDefault(candidate => candidate.Id == id);
+        if (subscription is null)
+        {
+            return LibrarySection.Manual;
+        }
+
+        if (!_sections.TryGetValue(id, out var section))
+        {
+            section = LibrarySection.For(subscription);
+            _sections[id] = section;
+        }
+
+        return section;
+    }
+
+    private void ApplyLibrarySort()
+    {
+        using (LibraryView.DeferRefresh())
+        {
+            LibraryView.SortDescriptions.Clear();
+            LibraryView.SortDescriptions.Add(new SortDescription("Section.Order", ListSortDirection.Ascending));
+            LibraryView.SortDescriptions.Add(new SortDescription("Section.Title", ListSortDirection.Ascending));
+
+            if (SortByLatency)
+            {
+                LibraryView.SortDescriptions.Add(new SortDescription(nameof(ProfileItem.SortKey), ListSortDirection.Ascending));
+            }
+
+            LibraryView.SortDescriptions.Add(new SortDescription("Profile.Name", ListSortDirection.Ascending));
+        }
+    }
+
+    private async Task TestLatencyAsync()
+    {
+        var items = Library.ToList();
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        var candidates = new List<(Guid Id, ParsedTunnel Tunnel)>(items.Count);
+        var byId = new Dictionary<Guid, ProfileItem>(items.Count);
+
+        foreach (var item in items)
+        {
+            try
+            {
+                candidates.Add((item.Profile.Id, TunnelParser.Parse(item.Profile.ConfigText)));
+                byId[item.Profile.Id] = item;
+                item.BeginTest();
+            }
+            catch (Exception exception) when (IsExpected(exception))
+            {
+                item.Apply(new LatencyResult(item.Profile.Id, null, "Invalid"));
+            }
+        }
+
+        var run = new CancellationTokenSource();
+        _latencyRun = run;
+        IsTestingLatency = true;
+
+        try
+        {
+            await _latency.RunAsync(candidates, result => Dispatch(() => byId[result.ProfileId].Apply(result)), run.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            foreach (var item in byId.Values.Where(item => item.LatencyState == LatencyState.Testing))
+            {
+                item.Apply(new LatencyResult(item.Profile.Id, null, "Cancelled"));
+            }
+        }
+        catch (Exception exception) when (IsExpected(exception))
+        {
+            foreach (var item in byId.Values.Where(item => item.LatencyState == LatencyState.Testing))
+            {
+                item.Apply(new LatencyResult(item.Profile.Id, null, "Failed"));
+            }
+
+            await _host.AlertAsync("Latency test", "The probe core could not run", exception.Message);
+        }
+        finally
+        {
+            IsTestingLatency = false;
+            if (ReferenceEquals(_latencyRun, run))
+            {
+                _latencyRun = null;
+            }
+
+            run.Dispose();
+        }
     }
 
     // ══ Application actions ══
@@ -935,6 +1244,21 @@ public sealed class ShellViewModel : Observable
         Process.Start(new ProcessStartInfo(AppPaths.Logs) { UseShellExecute = true });
     }
 
+    private void OpenExtensionFolder()
+    {
+        var folder = Path.Combine(AppContext.BaseDirectory, "extensions");
+        if (!Directory.Exists(folder))
+        {
+            _ = _host.AlertAsync(
+                "Browser extension",
+                "The extension folder is not part of this build",
+                "Release packages carry an \"extensions\" folder with the Firefox and Chrome add-ons. Download the package from GitHub, or build with build.cmd.");
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
+    }
+
     private void ClearLog()
     {
         AppLog.Clear();
@@ -963,6 +1287,7 @@ public sealed class ShellViewModel : Observable
         _settings.AutoReconnect = defaults.AutoReconnect;
         _settings.AutoConnect = defaults.AutoConnect;
         _settings.CloseToTray = defaults.CloseToTray;
+        BrowserBridgeEnabled = defaults.BrowserBridgeEnabled;
 
         RaiseAllSettings();
         await SaveAsync();
@@ -979,48 +1304,54 @@ public sealed class ShellViewModel : Observable
 
     private void OnTunnelChanged()
     {
-        var dispatcher = System.Windows.Application.Current?.Dispatcher;
-        if (dispatcher is not null && !dispatcher.CheckAccess())
+        Dispatch(() =>
         {
-            dispatcher.BeginInvoke(OnTunnelChanged);
-            return;
-        }
+            foreach (var property in new[]
+                     {
+                         nameof(State), nameof(StateWord), nameof(StatusDetail), nameof(IsConnected),
+                         nameof(IsTransitioning), nameof(IsKillSwitchHolding), nameof(CanConnect),
+                         nameof(UptimeText), nameof(LatencyText), nameof(ThroughputText), nameof(ExitIpText),
+                         nameof(ProbeFailure), nameof(CoreVersionText), nameof(KillSwitchStateText),
+                         nameof(AppStateWord), nameof(BridgeSummary)
+                     })
+            {
+                Raise(property);
+            }
 
-        foreach (var property in new[]
-                 {
-                     nameof(State), nameof(StateWord), nameof(StatusDetail), nameof(IsConnected),
-                     nameof(IsTransitioning), nameof(IsReconnecting), nameof(IsKillSwitchHolding),
-                     nameof(CanConnect), nameof(UptimeText), nameof(LatencyText), nameof(ThroughputText),
-                     nameof(ExitIpText), nameof(CoreVersionText), nameof(KillSwitchStateText), nameof(AppStateWord)
-                 })
-        {
-            Raise(property);
-        }
-
-        ConnectCommand.RaiseCanExecuteChanged();
+            ConnectCommand.RaiseCanExecuteChanged();
+        });
     }
 
     private void OnLogEntry(LogEntry entry)
     {
+        Dispatch(() =>
+        {
+            if (!Matches(entry))
+            {
+                return;
+            }
+
+            VisibleLog.Add(entry);
+            while (VisibleLog.Count > AppLog.BufferLimit)
+            {
+                VisibleLog.RemoveAt(0);
+            }
+
+            Raise(nameof(LogBufferText));
+        });
+    }
+
+    private static void Dispatch(Action action)
+    {
         var dispatcher = System.Windows.Application.Current?.Dispatcher;
-        if (dispatcher is not null && !dispatcher.CheckAccess())
+        if (dispatcher is null || dispatcher.CheckAccess())
         {
-            dispatcher.BeginInvoke(() => OnLogEntry(entry));
-            return;
+            action();
         }
-
-        if (!Matches(entry))
+        else
         {
-            return;
+            dispatcher.BeginInvoke(action);
         }
-
-        VisibleLog.Add(entry);
-        while (VisibleLog.Count > AppLog.BufferLimit)
-        {
-            VisibleLog.RemoveAt(0);
-        }
-
-        Raise(nameof(LogBufferText));
     }
 
     private void RebuildLog()
@@ -1086,8 +1417,8 @@ public sealed class ShellViewModel : Observable
                  {
                      nameof(RouteMode), nameof(RouteModeText), nameof(AppKillSwitch), nameof(DnsProtection),
                      nameof(Ipv6Protection), nameof(AllowLan), nameof(AutoReconnect), nameof(AutoConnect),
-                     nameof(CloseToTray), nameof(StartWithWindows), nameof(ShowFirstRun), nameof(AppSummary),
-                     nameof(StateWord), nameof(StatusDetail)
+                     nameof(CloseToTray), nameof(StartWithWindows), nameof(BrowserBridgeEnabled), nameof(BridgeSummary),
+                     nameof(ShowFirstRun), nameof(AppSummary), nameof(StateWord), nameof(StatusDetail)
                  })
         {
             Raise(property);

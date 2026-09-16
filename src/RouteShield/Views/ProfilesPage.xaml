@@ -4,96 +4,81 @@
              xmlns:ui="clr-namespace:RouteShield.Ui"
              xmlns:views="clr-namespace:RouteShield.Views">
 
-    <Grid Margin="30,24,30,28">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+    <UserControl.Resources>
+        <!-- One line of the library: name, format, and how the node last measured. -->
+        <DataTemplate x:Key="ProfileRow">
+            <Grid Margin="10,0,6,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-        <views:PageHeader Kicker="LIBRARY" Title="Profiles &amp; subscriptions">
-            <views:PageHeader.Actions>
-                <StackPanel Orientation="Horizontal">
-                    <Button Style="{StaticResource SecondaryButton}" Command="{Binding ImportProfileCommand}"
-                            Content="Import file" />
-                    <Button Style="{StaticResource PrimaryButton}" Margin="8,0,0,0"
-                            Command="{Binding NewProfileCommand}" Content="New profile" />
+                <StackPanel VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Style="{StaticResource RowLabel}" TextTrimming="CharacterEllipsis"
+                                   Text="{Binding Profile.Name}" />
+                        <Border Margin="8,0,0,0" Padding="5,1" CornerRadius="3" VerticalAlignment="Center"
+                                Background="{StaticResource TextBrush}"
+                                Visibility="{Binding Profile.BrowserPinned, Converter={StaticResource Show}}"
+                                ToolTip="Offered to the browser extension">
+                            <TextBlock FontFamily="{StaticResource HeadingFont}" FontSize="8"
+                                       Foreground="{StaticResource BgBrush}" ui:Typo.Tracked="WEB" />
+                        </Border>
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0" Text="{Binding Profile.Format}" />
                 </StackPanel>
-            </views:PageHeader.Actions>
-        </views:PageHeader>
 
-        <Grid Grid.Row="1" Margin="0,20,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="28" />
-                <ColumnDefinition Width="1.25*" />
-            </Grid.ColumnDefinitions>
+                <Border Grid.Column="1" Style="{StaticResource Chip}" Margin="12,0,0,0"
+                        Visibility="{Binding HasLatency, Converter={StaticResource Show}}">
+                    <TextBlock FontFamily="{StaticResource HeadingFont}" FontSize="10"
+                               Text="{Binding LatencyText, Converter={StaticResource Tracked}}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource BaseText}">
+                                <Setter Property="Foreground" Value="{StaticResource Neutral600Brush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding LatencyState}" Value="Measured">
+                                        <Setter Property="Foreground" Value="{StaticResource Accent700Brush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding LatencyState}" Value="Testing">
+                                        <Setter Property="Foreground" Value="{StaticResource Neutral500Brush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Border>
+            </Grid>
+        </DataTemplate>
 
-            <!-- ══ Library ══ -->
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
+        <!-- The heading over each section: manual profiles, or a subscription with its status and actions. -->
+        <Style x:Key="SectionHeader" TargetType="GroupItem">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GroupItem">
+                        <StackPanel>
+                            <Border Margin="0,18,0,0" Padding="0,0,0,8" BorderBrush="{StaticResource DividerBrush}"
+                                    BorderThickness="0,0,0,2">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
 
-                <DockPanel>
-                    <Border DockPanel.Dock="Top" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2"
-                            Padding="0,0,0,9">
-                        <Grid>
-                            <TextBlock Style="{StaticResource SectionTitle}" Text="Profiles" />
-                            <TextBlock Style="{StaticResource Caption}" HorizontalAlignment="Right"
-                                       VerticalAlignment="Bottom">
-                                <Run Text="{Binding Profiles.Count, Mode=OneWay}" />
-                                <Run Text="saved" />
-                            </TextBlock>
-                        </Grid>
-                    </Border>
-
-                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,14,0,0"
-                               Text="Paste a share link into the editor, import a file, or add a subscription URL below."
-                               Visibility="{Binding Profiles.Count, Converter={StaticResource ShowIfEmpty}}" />
-
-                    <ListBox Style="{StaticResource AppListBox}" ItemsSource="{Binding Profiles}"
-                             SelectedItem="{Binding SelectedProfile, Mode=TwoWay}">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Margin="10,0,0,0">
-                                    <StackPanel>
-                                        <TextBlock Style="{StaticResource RowLabel}" TextTrimming="CharacterEllipsis"
-                                                   Text="{Binding Name}" />
-                                        <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
-                                                   Text="{Binding Format}" />
-                                    </StackPanel>
-                                    <Ellipse Width="8" Height="8" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                             Fill="{StaticResource AccentBrush}"
-                                             Visibility="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}, Converter={StaticResource Show}}" />
-                                </Grid>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </DockPanel>
-
-                <StackPanel Grid.Row="1" Margin="0,24,0,0">
-                    <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
-                        <Grid>
-                            <TextBlock Style="{StaticResource SectionTitle}" Text="Subscriptions" />
-                            <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Right"
-                                    Command="{Binding RefreshSubscriptionsCommand}" Content="Refresh all" />
-                        </Grid>
-                    </Border>
-
-                    <ItemsControl ItemsSource="{Binding Subscriptions}" MaxHeight="120">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1"
-                                        Padding="0,10" Background="Transparent" MouseLeftButtonUp="OnSubscriptionClicked">
-                                    <StackPanel>
-                                        <TextBlock Style="{StaticResource RowLabel}" Text="{Binding Name}" />
-                                        <TextBlock Margin="0,2,0,0"
-                                                   TextTrimming="CharacterEllipsis" Text="{Binding StatusText}">
+                                    <StackPanel VerticalAlignment="Bottom">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Style="{StaticResource SectionTitle}" Text="{Binding Name.Title}" />
+                                            <TextBlock Style="{StaticResource Caption}" Margin="10,0,0,0"
+                                                       VerticalAlignment="Bottom">
+                                                <Run Text="{Binding ItemCount, Mode=OneWay}" /><Run Text=" saved" />
+                                            </TextBlock>
+                                        </StackPanel>
+                                        <TextBlock Margin="0,3,0,0" TextTrimming="CharacterEllipsis"
+                                                   Text="{Binding Name.Subscription.StatusText}"
+                                                   Visibility="{Binding Name.IsSubscription, Converter={StaticResource Show}}">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock" BasedOn="{StaticResource Caption}">
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding HasError}" Value="True">
+                                                        <DataTrigger Binding="{Binding Name.Subscription.HasError}" Value="True">
                                                             <Setter Property="Foreground" Value="{StaticResource Accent700Brush}" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
@@ -101,65 +86,145 @@
                                             </TextBlock.Style>
                                         </TextBlock>
                                     </StackPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
 
-                    <StackPanel Margin="0,14,0,0">
-                        <TextBlock Style="{StaticResource FieldLabel}" ui:Typo.Tracked="SUBSCRIPTION NAME" />
-                        <TextBox Style="{StaticResource AppTextBox}" Tag="Provider A"
-                                 Text="{Binding SubscriptionName, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom"
+                                                Visibility="{Binding Name.IsSubscription, Converter={StaticResource Show}}">
+                                        <Button Style="{StaticResource GhostButton}" Content="Refresh"
+                                                Command="{Binding DataContext.RefreshSubscriptionCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                CommandParameter="{Binding Name.Subscription}" />
+                                        <Button Style="{StaticResource GhostButton}" Content="Edit"
+                                                Command="{Binding DataContext.EditSubscriptionCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                CommandParameter="{Binding Name.Subscription}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                            <ItemsPresenter />
+                        </StackPanel>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
 
-                    <StackPanel Margin="0,10,0,0">
-                        <TextBlock Style="{StaticResource FieldLabel}" ui:Typo.Tracked="HTTPS URL" />
-                        <TextBox Style="{StaticResource AppTextBox}" Tag="https://sub.example.net/link/…"
-                                 Text="{Binding SubscriptionUrl, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
+    <Grid Margin="30,24,30,28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                        <Button Style="{StaticResource PrimaryButton}" Command="{Binding SaveSubscriptionCommand}"
-                                Content="Add / update" />
-                        <Button Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"
-                                Command="{Binding RemoveSubscriptionCommand}" Content="Remove" />
-                    </StackPanel>
-
-                    <TextBlock Style="{StaticResource Caption}" Margin="0,10,0,0" TextWrapping="Wrap"
-                               Text="URLs are stored encrypted with Windows DPAPI." />
+        <views:PageHeader Kicker="LIBRARY" Title="Profiles &amp; subscriptions">
+            <views:PageHeader.Actions>
+                <StackPanel Orientation="Horizontal">
+                    <Button Style="{StaticResource SecondaryButton}" Command="{Binding AddSubscriptionCommand}"
+                            Content="Add subscription" />
+                    <Button Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"
+                            Command="{Binding ImportProfileCommand}" Content="Import file" />
+                    <Button Style="{StaticResource PrimaryButton}" Margin="8,0,0,0"
+                            Command="{Binding NewProfileCommand}" Content="New profile" />
                 </StackPanel>
+            </views:PageHeader.Actions>
+        </views:PageHeader>
+
+        <!-- ══ Toolbar ══ -->
+        <Grid Grid.Row="1" Margin="0,18,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="28" />
+                <ColumnDefinition Width="1.15*" />
+            </Grid.ColumnDefinitions>
+
+            <Grid>
+                <StackPanel Orientation="Horizontal">
+                    <Button Style="{StaticResource SecondaryButton}" Content="Test latency"
+                            Command="{Binding TestLatencyCommand}"
+                            Visibility="{Binding IsTestingLatency, Converter={StaticResource Hide}}" />
+                    <Button Style="{StaticResource SecondaryButton}" Content="Stop testing"
+                            Command="{Binding CancelLatencyCommand}"
+                            Visibility="{Binding IsTestingLatency, Converter={StaticResource Show}}" />
+
+                    <Border Margin="10,0,0,0" CornerRadius="{StaticResource RadiusMd}" BorderThickness="1"
+                            BorderBrush="{StaticResource DividerBrush}" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton Style="{StaticResource SegmentOption}" Content="Name" GroupName="LibrarySort"
+                                         IsChecked="{Binding SortByLatency, Converter={StaticResource Not}, Mode=TwoWay}" />
+                            <RadioButton Style="{StaticResource SegmentOption}" Content="Latency" GroupName="LibrarySort"
+                                         IsChecked="{Binding SortByLatency, Mode=TwoWay}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <TextBlock Style="{StaticResource Caption}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                           Text="{Binding LibrarySummary}" />
+            </Grid>
+
+            <Border Grid.Column="2" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2"
+                    Padding="0,0,0,9" VerticalAlignment="Bottom">
+                <Grid>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Style="{StaticResource SectionTitle}" Text="Profile editor" />
+                        <Border Margin="12,0,0,0" Padding="8,3" VerticalAlignment="Center"
+                                CornerRadius="{StaticResource RadiusXs}" Background="{StaticResource Accent100Brush}">
+                            <TextBlock FontFamily="{StaticResource HeadingFont}" FontSize="10"
+                                       Foreground="{StaticResource Accent800Brush}"
+                                       Text="{Binding EditorFormat, Converter={StaticResource Tracked}}" />
+                        </Border>
+                    </StackPanel>
+                    <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Right"
+                            Command="{Binding DetectFormatCommand}" Content="Check format" />
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="28" />
+                <ColumnDefinition Width="1.15*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- ══ Library ══ -->
+            <Grid>
+                <TextBlock Style="{StaticResource HelpText}" Margin="0,22,0,0" VerticalAlignment="Top"
+                           Text="Nothing here yet. Paste a share link into the editor, import a file, or add a subscription."
+                           Visibility="{Binding Profiles.Count, Converter={StaticResource ShowIfEmpty}}" />
+
+                <ListBox Style="{StaticResource AppListBox}" Margin="0,0,0,0"
+                         ItemsSource="{Binding LibraryView}"
+                         ItemTemplate="{StaticResource ProfileRow}"
+                         SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+                         VirtualizingPanel.IsVirtualizingWhenGrouping="True"
+                         ScrollViewer.CanContentScroll="False">
+                    <ListBox.GroupStyle>
+                        <GroupStyle ContainerStyle="{StaticResource SectionHeader}" />
+                    </ListBox.GroupStyle>
+                </ListBox>
             </Grid>
 
             <!-- ══ Editor ══ -->
-            <DockPanel Grid.Column="2">
-                <Border DockPanel.Dock="Top" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2"
-                        Padding="0,0,0,9">
-                    <Grid>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Style="{StaticResource SectionTitle}" Text="Profile editor" />
-                            <Border Margin="12,0,0,0" Padding="9,4" VerticalAlignment="Center"
-                                    CornerRadius="{StaticResource RadiusPill}"
-                                    Background="{StaticResource Accent100Brush}">
-                                <TextBlock FontFamily="{StaticResource HeadingFont}" FontSize="10"
-                                           Foreground="{StaticResource Accent800Brush}"
-                                           Text="{Binding EditorFormat, Converter={StaticResource Tracked}}" />
-                            </Border>
-                        </StackPanel>
-                        <Button Style="{StaticResource SecondaryButton}" HorizontalAlignment="Right"
-                                Command="{Binding DetectFormatCommand}" Content="Check format" />
-                    </Grid>
-                </Border>
-
-                <StackPanel DockPanel.Dock="Top" Margin="0,16,0,0">
+            <DockPanel Grid.Column="2" Margin="0,16,0,0">
+                <StackPanel DockPanel.Dock="Top">
                     <TextBlock Style="{StaticResource FieldLabel}" ui:Typo.Tracked="PROFILE NAME" />
                     <TextBox Style="{StaticResource AppTextBox}" Tag="Frankfurt"
                              Text="{Binding EditorName, UpdateSourceTrigger=PropertyChanged}" />
                 </StackPanel>
 
-                <Border DockPanel.Dock="Bottom" Margin="0,14,0,0">
-                    <Grid>
+                <StackPanel DockPanel.Dock="Bottom" Margin="0,14,0,0">
+                    <Border Padding="14,12" CornerRadius="{StaticResource RadiusMd}" Background="{StaticResource SurfaceBrush}"
+                            IsEnabled="{Binding HasSelectedProfile}">
+                        <CheckBox Style="{StaticResource AppCheckBox}" IsChecked="{Binding SelectedProfilePinned, Mode=TwoWay}">
+                            <StackPanel>
+                                <TextBlock FontFamily="{StaticResource MediumFont}" FontSize="13.5"
+                                           Text="Offer this profile to the browser extension" />
+                                <TextBlock Style="{StaticResource HelpText}" Margin="0,3,0,0"
+                                           Text="Pinned profiles show up as per-tab choices in Firefox and per-site choices in Chrome. Takes effect on the next connect." />
+                            </StackPanel>
+                        </CheckBox>
+                    </Border>
+
+                    <Grid Margin="0,14,0,0">
                         <TextBlock Style="{StaticResource Caption}" VerticalAlignment="Center" TextWrapping="Wrap"
-                                   MaxWidth="420" HorizontalAlignment="Left"
+                                   MaxWidth="360" HorizontalAlignment="Left"
                                    Text="Saved secrets are encrypted with Windows DPAPI and never leave this machine." />
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                             <Button Style="{StaticResource SecondaryButton}" Command="{Binding DeleteProfileCommand}"
@@ -168,10 +233,10 @@
                                     Command="{Binding SaveProfileCommand}" Content="Save profile" />
                         </StackPanel>
                     </Grid>
-                </Border>
+                </StackPanel>
 
                 <TextBox Style="{StaticResource CodeTextBox}" Margin="0,14,0,0"
-                         Tag="vless://… or a sing-box configuration"
+                         Tag="vless://… · a WireGuard .conf · a sing-box configuration"
                          Text="{Binding EditorConfig, UpdateSourceTrigger=PropertyChanged}" />
             </DockPanel>
         </Grid>

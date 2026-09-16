@@ -12,6 +12,7 @@
 
             <ui:BoolToVisibilityConverter x:Key="Show" />
             <ui:BoolToVisibilityConverter x:Key="Hide" Invert="True" />
+            <ui:NotConverter x:Key="Not" />
             <ui:PresenceToVisibilityConverter x:Key="ShowIfPresent" />
             <ui:PresenceToVisibilityConverter x:Key="ShowIfAbsent" Invert="True" />
             <ui:EnumMatchConverter x:Key="EnumMatch" />

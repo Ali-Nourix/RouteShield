@@ -17,8 +17,13 @@ the tunnel; everything else keeps your own connection.
 - **Application kill switch** — while the tunnel is up, the routed executables are blocked from
   reaching the internet over any physical adapter, so a core crash drops their traffic instead
   of leaking it.
-- **DNS that follows the routing policy** — routed applications resolve over DNS-over-HTTPS
-  inside the tunnel; everything else keeps the system resolver.
+- **DNS that cannot be poisoned** — names are answered instantly from a private range and the
+  name itself travels to the proxy, so a blocked or lying local resolver cannot break a routed
+  application. Direct traffic still resolves on your own connection.
+- **Latency test** — one throwaway core times a request through every profile; sort the
+  library by the result.
+- **Browser extension** — a route per tab in Firefox, per site in Chrome: any pinned profile,
+  or no VPN at all, while the rest of the browser follows the routing policy.
 - **Live telemetry** — uptime, HTTP latency measured through the tunnel, throughput read from the
   core, and the exit address the outside world sees.
 - **Diagnostics** — a filterable event log and an export bundle that never carries a secret.
@@ -62,6 +67,7 @@ build.cmd -Version 1.2.0
 | `src/RouteShield` | The WPF application: shell, pages, services, tray integration. |
 | `tests/RouteShield.Core.Tests` | Unit tests, plus validation of every generated configuration against a real sing-box binary. |
 | `scripts/build.ps1` | The packaging script `build.cmd` calls. |
+| `extension/` | The Firefox and Chrome add-ons and the loopback bridge client they share. |
 | `docs/design-system.md` | The Modernist design system the interface is built on. |
 
 ## Tests
@@ -79,6 +85,16 @@ export ROUTESHIELD_SINGBOX=/path/to/sing-box
 dotnet test
 ```
 
+## Browser extension
+
+While the tunnel is up, RouteShield runs one loopback SOCKS proxy per route — the active
+profile, every profile you pinned in *Profiles*, and a bypass that leaves through your own
+connection — and describes them on `http://127.0.0.1:47831/v1/state`. The add-ons in
+`extension/` read that list and point a tab (Firefox, via `proxy.onRequest`) or a site
+(Chrome, via a generated PAC script — Chrome has no per-tab proxy) at the proxy you choose.
+Both are packaged with every release; see [extension/README.md](extension/README.md) for
+installation.
+
 ## How the tunnel is put together
 
 RouteShield builds one sing-box configuration per connection:
@@ -90,12 +106,18 @@ RouteShield builds one sing-box configuration per connection:
 - **`route.default_domain_resolver`** always names `dns-local`, a resolver that answers on the
   physical adapter. sing-box 1.14 refuses to start without it, and the resolver that reaches the
   proxy server has to live outside the tunnel or the tunnel can never come up.
-- With secure DNS on, a second resolver (`dns-tunnel`) carries queries over DNS-over-HTTPS with
-  `detour: proxy`, and a DNS rule sends each query to whichever resolver matches how its process
-  is routed.
-- A loopback **mixed inbound** carries the latency and exit-address probe, and the **Clash API**
-  on a second loopback port reports throughput. Both use ports reserved at start, with a fresh
-  API token each run.
+- With secure DNS on, every A/AAAA query is hijacked and answered from the **FakeIP** range
+  `198.18.0.0/15`. Windows sends all DNS from the DNS Client service, so a query can never be
+  attributed to the program that asked; fake answers make attribution unnecessary. The
+  application connects to the fake address, the core maps it back to the name, routed traffic
+  carries the name to the proxy, and direct traffic resolves it at connect time on the physical
+  adapter. The mapping is persisted in `cache.db` so addresses an application cached survive a
+  restart.
+- A loopback **mixed inbound** carries the latency and exit-address probe, the **bridge
+  inbounds** carry the browser extension's routes, and the **Clash API** on another loopback
+  port reports throughput. All ports are reserved at start, with a fresh API token each run.
+- The **latency test** starts a second, inbound-less core with every profile as a node and asks
+  its Clash API to time `https://www.gstatic.com/generate_204` through each one.
 
 ## Licence
 

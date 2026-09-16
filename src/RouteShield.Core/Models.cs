@@ -54,6 +54,7 @@ public sealed class VpnProfile : Observable
     private string _name = "New profile";
     private string _format = "Unknown";
     private string _configText = string.Empty;
+    private bool _browserPinned;
 
     public Guid Id { get; set; } = Guid.NewGuid();
 
@@ -75,6 +76,13 @@ public sealed class VpnProfile : Observable
     public string EncryptedConfig { get; set; } = string.Empty;
 
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
+
+    /// <summary>Offered to the browser extension as a per-tab choice while the tunnel is up.</summary>
+    public bool BrowserPinned
+    {
+        get => _browserPinned;
+        set => Set(ref _browserPinned, value);
+    }
 
     [JsonIgnore]
     public string ConfigText
@@ -235,6 +243,11 @@ public sealed class AppSettings
     public bool AutoConnect { get; set; }
 
     public bool CloseToTray { get; set; } = true;
+
+    public bool BrowserBridgeEnabled { get; set; } = true;
+
+    /// <summary>Where the browser extension finds the running app. Fixed so the extension needs no pairing step.</summary>
+    public int BrowserBridgePort { get; set; } = 47831;
 
     public bool FirstRun { get; set; } = true;
 }

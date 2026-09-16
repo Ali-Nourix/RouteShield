@@ -28,13 +28,13 @@
 
         <views:PageHeader Kicker="CONTROL CENTRE" Title="Connection">
             <views:PageHeader.Actions>
-                <Border Padding="10,5" CornerRadius="{StaticResource RadiusPill}"
+                <Border Padding="10,5" CornerRadius="{StaticResource RadiusXs}"
                         BorderBrush="{StaticResource DividerBrush}" BorderThickness="1">
                     <StackPanel Orientation="Horizontal">
-                        <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{StaticResource TextBrush}"
-                                 Visibility="{Binding IsAdministrator, Converter={StaticResource Show}}" />
-                        <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{StaticResource Neutral400Brush}"
-                                 Visibility="{Binding IsAdministrator, Converter={StaticResource Hide}}" />
+                        <Border Width="8" Height="8" CornerRadius="2" VerticalAlignment="Center" Background="{StaticResource TextBrush}"
+                                Visibility="{Binding IsAdministrator, Converter={StaticResource Show}}" />
+                        <Border Width="8" Height="8" CornerRadius="2" VerticalAlignment="Center" Background="{StaticResource Neutral400Brush}"
+                                Visibility="{Binding IsAdministrator, Converter={StaticResource Hide}}" />
                         <TextBlock Margin="8,0,0,0" FontSize="11.5" VerticalAlignment="Center">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource BaseText}">
@@ -63,7 +63,7 @@
 
                 <StackPanel VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
-                        <Ellipse Width="14" Height="14" VerticalAlignment="Center" Fill="{StaticResource AccentBrush}" />
+                        <Border Width="14" Height="14" CornerRadius="4" VerticalAlignment="Center" Background="{StaticResource AccentBrush}" />
                         <TextBlock Style="{StaticResource StatusHeadline}" Margin="12,0,0,0"
                                    Foreground="{StaticResource BgBrush}" Text="{Binding StateWord}" />
                     </StackPanel>
@@ -93,14 +93,23 @@
                         <Grid>
                             <TextBlock FontFamily="{StaticResource HeadingFont}" FontSize="18"
                                        VerticalAlignment="Center" HorizontalAlignment="Left"
+                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                        ui:Typo.Tracked="DISCONNECT" />
                             <TextBlock FontSize="13" VerticalAlignment="Center" HorizontalAlignment="Right"
+                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                        Text="{Binding UptimeText}" />
                         </Grid>
                     </Button>
                     <TextBlock Style="{StaticResource Caption}" Margin="0,10,0,0"
                                Foreground="{StaticResource Neutral500Brush}"
                                Text="{Binding CoreVersionText}" />
+                    <TextBlock Style="{StaticResource Caption}" Margin="0,3,0,0" TextWrapping="Wrap"
+                               Foreground="{StaticResource Neutral500Brush}"
+                               Text="{Binding BridgeSummary}" />
+                    <TextBlock Style="{StaticResource Caption}" Margin="0,3,0,0" TextWrapping="Wrap"
+                               Foreground="{StaticResource Accent400Brush}"
+                               Text="{Binding ProbeFailure}"
+                               Visibility="{Binding ProbeFailure, Converter={StaticResource ShowIfPresent}}" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -116,21 +125,21 @@
 
                 <StackPanel VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
-                        <Ellipse Width="14" Height="14" VerticalAlignment="Center" StrokeThickness="3">
-                            <Ellipse.Style>
-                                <Style TargetType="Ellipse">
-                                    <Setter Property="Stroke" Value="{StaticResource Neutral500Brush}" />
+                        <Border Width="14" Height="14" CornerRadius="4" VerticalAlignment="Center" BorderThickness="3">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="BorderBrush" Value="{StaticResource Neutral500Brush}" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding State}" Value="Failed">
-                                            <Setter Property="Stroke" Value="{StaticResource AccentBrush}" />
+                                            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding IsTransitioning}" Value="True">
-                                            <Setter Property="Stroke" Value="{StaticResource AccentBrush}" />
+                                            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
-                            </Ellipse.Style>
-                        </Ellipse>
+                            </Border.Style>
+                        </Border>
                         <TextBlock Style="{StaticResource StatusHeadline}" Margin="12,0,0,0" Text="{Binding StateWord}" />
                     </StackPanel>
 
@@ -295,6 +304,7 @@
                 <views:StateRow Label="Application kill switch" Emphasise="True" OnLabel="ARMED"
                                 IsOn="{Binding AppKillSwitch}" />
                 <views:StateRow Label="Local network access" IsOn="{Binding AllowLan}" />
+                <views:StateRow Label="Browser bridge for the extension" IsOn="{Binding BrowserBridgeEnabled}" />
             </StackPanel>
         </Grid>
     </Grid>

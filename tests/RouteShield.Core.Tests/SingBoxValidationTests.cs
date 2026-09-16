@@ -82,6 +82,67 @@ public class SingBoxValidationTests
     }
 
     [SkippableFact]
+    public void A_bridged_configuration_is_accepted_by_the_core()
+    {
+        var core = CorePath;
+        Skip.If(core is null, "Set ROUTESHIELD_SINGBOX to a sing-box executable to run core validation.");
+
+        BridgeRoute[] bridges =
+        [
+            BridgeRoute.Active(new VpnProfile { Name = "Frankfurt" }),
+            BridgeRoute.Profile(new VpnProfile { Name = "Tokyo" }, TunnelParser.Parse(Fixtures.Trojan)),
+            BridgeRoute.Profile(new VpnProfile { Name = "Home" }, TunnelParser.Parse(Fixtures.WireGuardConf)),
+            BridgeRoute.Bypass()
+        ];
+
+        var runtime = RuntimeConfigBuilder.Build(
+            TunnelParser.Parse(Fixtures.VlessReality),
+            Fixtures.Settings(allowLan: true),
+            Fixtures.Apps,
+            bridges,
+            new PortPlan(21080, 29090, "s3cret", [23000, 23001, 23002, 23003]));
+
+        AssertAccepted(core!, runtime.Json);
+    }
+
+    [SkippableFact]
+    public void The_latency_probe_configuration_is_accepted_by_the_core()
+    {
+        var core = CorePath;
+        Skip.If(core is null, "Set ROUTESHIELD_SINGBOX to a sing-box executable to run core validation.");
+
+        var json = LatencyProbeConfigBuilder.Build(
+            [
+                (Guid.NewGuid(), TunnelParser.Parse(Fixtures.VlessReality)),
+                (Guid.NewGuid(), TunnelParser.Parse(Fixtures.VlessWebSocket)),
+                (Guid.NewGuid(), TunnelParser.Parse(Fixtures.Shadowsocks)),
+                (Guid.NewGuid(), TunnelParser.Parse(Fixtures.WireGuardConf))
+            ],
+            29191,
+            "probe");
+
+        AssertAccepted(core!, json);
+    }
+
+    private static void AssertAccepted(string core, string json)
+    {
+        var configPath = Path.Combine(Path.GetTempPath(), $"routeshield-{Guid.NewGuid():N}.json");
+        File.WriteAllText(configPath, json);
+
+        try
+        {
+            var (exitCode, output) = Run(core, "check", "-c", configPath);
+
+            Assert.True(exitCode == 0, $"sing-box rejected the configuration:\n{output}\n\n{json}");
+            Assert.DoesNotContain("deprecated", output, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            File.Delete(configPath);
+        }
+    }
+
+    [SkippableFact]
     public void A_config_without_a_default_resolver_is_still_rejected_by_the_core()
     {
         var core = CorePath;
