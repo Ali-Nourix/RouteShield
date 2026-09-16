@@ -32,15 +32,27 @@ elevated token. Verify the download against the `.sha256` file published beside 
 
 ## Build from source
 
-Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) on Windows.
+On Windows, from the folder you unzipped into:
 
 ```cmd
 build.cmd
 ```
 
-The script downloads the pinned sing-box release, verifies it against the digest GitHub
+That is the whole prerequisite list. If the machine has no .NET 8 SDK, the build installs a
+private copy under `.tools` and uses it only for this build, leaving the rest of the machine
+alone. It then downloads the pinned sing-box release, verifies it against the digest GitHub
 publishes for the asset, publishes a self-contained single-file executable, and writes
 `artifacts\RouteShield-<version>-win-x64.zip` with its checksum.
+
+The first build takes a few minutes because of the downloads; later ones reuse both caches.
+`clean.cmd` removes every build output, including them.
+
+Options pass straight through:
+
+```cmd
+build.cmd -Runtime win-arm64
+build.cmd -Version 1.2.0
+```
 
 ## Layout
 

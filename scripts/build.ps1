@@ -6,6 +6,9 @@
     Fetches the official sing-box release for the target runtime, verifies it against the
     digest GitHub publishes for the asset, publishes the app as a self-contained single file,
     and writes artifacts\RouteShield-<version>-<runtime>.zip.
+
+    Needs nothing installed beforehand: when the machine has no .NET 8 SDK, a private copy
+    is installed under .tools and used only for this build.
 #>
 
 [CmdletBinding()]
@@ -44,6 +47,56 @@ function Assert-ExitCode([string]$Name) {
     if ($LASTEXITCODE -ne 0) {
         throw "$Name failed with exit code $LASTEXITCODE"
     }
+}
+
+function Get-HostArchitecture {
+    if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') {
+        return 'arm64'
+    }
+
+    return 'x64'
+}
+
+<#
+.SYNOPSIS
+    Returns a dotnet that can build this project, installing one if the machine has none.
+.DESCRIPTION
+    An SDK of major version 8 or newer can target net8.0, so an existing install is reused
+    whenever possible. Otherwise Microsoft's own installer puts a private copy under .tools,
+    which keeps a one-step build from having to change anything else on the machine.
+#>
+function Resolve-Dotnet {
+    $existing = Get-Command dotnet -ErrorAction SilentlyContinue
+    if ($existing) {
+        $sdks = & $existing.Source --list-sdks 2>$null
+        $usable = $sdks | Where-Object { $_ -match '^(\d+)\.' -and [int]$Matches[1] -ge 8 }
+
+        if ($usable) {
+            Step "Using the .NET SDK already on this machine ($(($usable | Select-Object -Last 1) -split ' ' | Select-Object -First 1))"
+            return $existing.Source
+        }
+    }
+
+    $private = Join-Path $Tools 'dotnet\dotnet.exe'
+    if (Test-Path $private) {
+        Step 'Using the private .NET SDK under .tools'
+        return $private
+    }
+
+    Step 'No .NET 8 SDK was found; installing a private copy under .tools (this happens once)'
+
+    New-Item -ItemType Directory -Force -Path $Tools | Out-Null
+    $installer = Join-Path $Tools 'dotnet-install.ps1'
+    Invoke-WebRequest -Uri 'https://dot.net/v1/dotnet-install.ps1' -OutFile $installer -UseBasicParsing
+
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer `
+        -Channel 8.0 -Architecture (Get-HostArchitecture) -InstallDir (Join-Path $Tools 'dotnet') -NoPath
+
+    if (-not (Test-Path $private)) {
+        throw 'The .NET SDK could not be installed. Install it by hand from https://dotnet.microsoft.com/download/dotnet/8.0 and run build.cmd again.'
+    }
+
+    return $private
 }
 
 function Get-SingBoxArchiveName {
@@ -149,7 +202,7 @@ function Publish-App {
         $arguments += "-p:Version=$Version"
     }
 
-    dotnet @arguments
+    & $Dotnet @arguments
     Assert-ExitCode 'dotnet publish'
 }
 
@@ -195,6 +248,7 @@ function Compress-Package {
     Write-Host "SHA-256: $hash" -ForegroundColor Green
 }
 
+$Dotnet = Resolve-Dotnet
 Install-SingBox
 Publish-App
 Copy-Core
