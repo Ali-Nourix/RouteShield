@@ -1,0 +1,9 @@
+bin/
+obj/
+dist/
+artifacts/
+.tools/
+third_party/sing-box/
+*.user
+*.suo
+.vs/

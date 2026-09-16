@@ -1,0 +1,27 @@
+<Application x:Class="RouteShield.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:RouteShield.Ui"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Theme/Tokens.xaml" />
+                <ResourceDictionary Source="Theme/Controls.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <ui:BoolToVisibilityConverter x:Key="Show" />
+            <ui:BoolToVisibilityConverter x:Key="Hide" Invert="True" />
+            <ui:PresenceToVisibilityConverter x:Key="ShowIfPresent" />
+            <ui:PresenceToVisibilityConverter x:Key="ShowIfAbsent" Invert="True" />
+            <ui:EnumMatchConverter x:Key="EnumMatch" />
+            <ui:EnumVisibilityConverter x:Key="ShowForState" />
+            <ui:EnumVisibilityConverter x:Key="HideForState" Invert="True" />
+            <ui:ValueMatchConverter x:Key="ValueMatch" />
+            <ui:TrackingConverter x:Key="Tracked" />
+            <ui:RouteModeNameConverter x:Key="RouteModeName" />
+            <ui:CountToVisibilityConverter x:Key="ShowIfAny" />
+            <ui:CountToVisibilityConverter x:Key="ShowIfEmpty" Invert="True" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

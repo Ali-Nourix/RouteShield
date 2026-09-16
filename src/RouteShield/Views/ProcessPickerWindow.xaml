@@ -1,0 +1,99 @@
+<Window x:Class="RouteShield.Views.ProcessPickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:RouteShield.Ui"
+        Title="Running processes"
+        Width="640" Height="560" MinWidth="520" MinHeight="420"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        FontFamily="{StaticResource BodyFont}" Foreground="{StaticResource TextBrush}"
+        UseLayoutRounding="True">
+
+    <Border Background="{StaticResource BgBrush}" CornerRadius="{StaticResource RadiusLg}" Margin="18"
+            Effect="{StaticResource ShadowLg}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2" Padding="20,14"
+                    MouseLeftButtonDown="OnDragWindow">
+                <Grid>
+                    <TextBlock FontFamily="{StaticResource HeadingFont}" FontSize="12" VerticalAlignment="Center"
+                               ui:Typo.Tracked="RUNNING PROCESSES" />
+                    <Button Style="{StaticResource CloseWindowButton}" Width="28" Height="28"
+                            HorizontalAlignment="Right" Click="OnCancel" />
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="1" Margin="20,16,20,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="SearchBox" Style="{StaticResource AppTextBox}" Tag="Search by name or path"
+                         TextChanged="OnSearchChanged" />
+                <Button Grid.Column="1" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"
+                        Click="OnRefresh" Content="Refresh" />
+            </Grid>
+
+            <Grid Grid.Row="2" Margin="20,16,20,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="28" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="80" />
+                    <ColumnDefinition Width="90" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="1" Style="{StaticResource Kicker}" ui:Typo.Tracked="PROCESS" />
+                <TextBlock Grid.Column="2" Style="{StaticResource Kicker}" ui:Typo.Tracked="PID" />
+                <TextBlock Grid.Column="3" Style="{StaticResource Kicker}" ui:Typo.Tracked="MEMORY" />
+            </Grid>
+
+            <ListBox x:Name="ProcessList" Grid.Row="3" Margin="20,0" Style="{StaticResource AppListBox}"
+                     SelectionMode="Extended" SelectionChanged="OnSelectionChanged">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="28" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="80" />
+                                <ColumnDefinition Width="90" />
+                            </Grid.ColumnDefinitions>
+
+                            <Ellipse Width="8" Height="8" Margin="10,0,0,0" HorizontalAlignment="Left"
+                                     VerticalAlignment="Center" Fill="{StaticResource AccentBrush}" />
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Style="{StaticResource RowLabel}" TextTrimming="CharacterEllipsis"
+                                           Text="{Binding Name}" />
+                                <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
+                                           TextTrimming="CharacterEllipsis" Text="{Binding Path}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" Style="{StaticResource Caption}" VerticalAlignment="Center"
+                                       Text="{Binding Pid}" />
+                            <TextBlock Grid.Column="3" Style="{StaticResource Caption}" VerticalAlignment="Center"
+                                       Text="{Binding MemoryText}" />
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <Border Grid.Row="4" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,2,0,0"
+                    Padding="20,14" Margin="0,14,0,0">
+                <Grid>
+                    <TextBlock x:Name="SelectionSummary" Style="{StaticResource Caption}" VerticalAlignment="Center"
+                               Text="Nothing selected" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Style="{StaticResource SecondaryButton}" Click="OnCancel" Content="Cancel" />
+                        <Button Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Click="OnAccept"
+                                Content="Add to routing" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>
