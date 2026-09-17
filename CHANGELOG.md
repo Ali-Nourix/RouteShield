@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.5.0
+
+### Fixed
+
+- **Another VPN took the tunnel with it.** A corporate client such as Cisco AnyConnect installs
+  its own default route while it is connected, and the core — told to detect the default
+  interface — followed it. Every dial to a proxy server then left from inside the corporate
+  network, where its firewall refused or dropped them, so RouteShield reported itself connected
+  while nothing could reach the outside: `dial tcp …: i/o timeout` and `An existing connection
+  was forcibly closed by the remote host`, from a 10.x address belonging to the other VPN.
+
+  RouteShield now names the adapter it leaves on instead of asking which one holds the default
+  route. *Security & behaviour → Outbound adapter* offers **Avoid other VPNs** (the default:
+  a physical adapter, skipping anything belonging to a VPN or a virtual switch), **Follow
+  Windows** (the old behaviour), or one adapter you name. The bound adapter's own resolvers are
+  used too, since the system list holds resolvers that only answer through the VPN we just
+  stopped dialling through. When the network changes — the other VPN connecting or dropping —
+  the tunnel moves itself to the adapter that is up now, with the leak guard still armed.
+- **WireGuard profiles failed every IPv6 connection** with `missing IPv6 local address` when the
+  peer had only an IPv4 address of its own. A node that cannot carry IPv6 is no longer handed
+  IPv6 destinations: the tunnel is built without them and AAAA queries are answered empty.
+- **WireGuard profiles dropped large packets** with `wsasendmsg: A message sent on a datagram
+  socket was larger than the internal message buffer`. A WireGuard peer wraps each packet in one
+  datagram, so the tunnel interface no longer offers more than the peer's own MTU.
+
 ## 1.4.0
 
 ### Fixed

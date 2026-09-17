@@ -100,7 +100,8 @@ public static class RuntimeConfigBuilder
         AppSettings settings,
         IEnumerable<AppTarget> apps,
         IReadOnlyList<BridgeRoute> bridges,
-        PortPlan ports)
+        PortPlan ports,
+        NetworkBinding? binding = null)
     {
         if (ports.BridgePorts.Count != bridges.Count)
         {
@@ -118,7 +119,11 @@ public static class RuntimeConfigBuilder
         var endpoints = new JsonArray();
         var members = PlaceTarget(target, settings, outbounds, endpoints);
 
-        var inbounds = BuildInbounds(settings, ports.ProxyPort);
+        // A node that cannot carry IPv6 — a WireGuard peer with no v6 address — must not be
+        // handed v6 destinations, or every one of them fails with "missing IPv6 local address".
+        var carriesIpv6 = settings.Ipv6Protection && target.Tunnels.All(tunnel => tunnel.CarriesIpv6);
+
+        var inbounds = BuildInbounds(settings, ports.ProxyPort, carriesIpv6, TunnelMtuFor(target));
         var rules = BuildLeadingRules(settings);
         var bindings = new List<BridgeBinding>(bridges.Count);
 
@@ -164,16 +169,10 @@ public static class RuntimeConfigBuilder
                 ["level"] = "info",
                 ["timestamp"] = false
             },
-            ["dns"] = BuildDns(settings),
+            ["dns"] = BuildDns(settings, carriesIpv6, binding),
             ["inbounds"] = inbounds,
             ["outbounds"] = outbounds,
-            ["route"] = new JsonObject
-            {
-                ["auto_detect_interface"] = true,
-                ["default_domain_resolver"] = new JsonObject { ["server"] = LocalResolverTag },
-                ["rules"] = rules,
-                ["final"] = settings.RouteMode == RouteMode.SelectedAppsOnly ? DirectTag : ProxyTag
-            },
+            ["route"] = BuildRoute(settings, rules, binding),
             ["experimental"] = BuildExperimental(settings, ports)
         };
 
@@ -277,18 +276,49 @@ public static class RuntimeConfigBuilder
         tls["record_fragment"] = true;
     }
 
-    private static JsonObject BuildDns(AppSettings settings)
+    /// <summary>
+    /// Names the adapter the core dials on, or lets it follow the system default.
+    ///
+    /// The two are alternatives: <c>auto_detect_interface</c> follows whatever holds the default
+    /// route, which is exactly what another VPN takes over, so a bound run states the adapter
+    /// instead and never asks.
+    /// </summary>
+    private static JsonObject BuildRoute(AppSettings settings, JsonArray rules, NetworkBinding? binding)
     {
-        var servers = new JsonArray(new JsonObject
+        var route = new JsonObject();
+
+        if (binding is null)
         {
-            ["type"] = "local",
-            ["tag"] = LocalResolverTag
-        });
+            route["auto_detect_interface"] = true;
+        }
+        else
+        {
+            route["default_interface"] = binding.InterfaceName;
+        }
+
+        route["default_domain_resolver"] = new JsonObject { ["server"] = LocalResolverTag };
+        route["rules"] = rules;
+        route["final"] = settings.RouteMode == RouteMode.SelectedAppsOnly ? DirectTag : ProxyTag;
+
+        return route;
+    }
+
+    /// <summary>
+    /// The tunnel interface never carries more than the node underneath it can. A WireGuard peer
+    /// wraps each packet in one UDP datagram, so a 9000-byte frame from the interface becomes a
+    /// datagram the socket refuses to send; the interface takes the peer's own MTU instead.
+    /// </summary>
+    private static int TunnelMtuFor(ConnectionTarget target) =>
+        target.Tunnels.Select(tunnel => tunnel.LinkMtu ?? TunnelMtu).Append(TunnelMtu).Min();
+
+    private static JsonObject BuildDns(AppSettings settings, bool carriesIpv6, NetworkBinding? binding)
+    {
+        var servers = new JsonArray(LocalResolver(binding));
 
         var dns = new JsonObject
         {
             ["servers"] = servers,
-            ["strategy"] = settings.Ipv6Protection ? "prefer_ipv4" : "ipv4_only",
+            ["strategy"] = carriesIpv6 ? "prefer_ipv4" : "ipv4_only",
             ["cache_capacity"] = 4096,
             ["final"] = LocalResolverTag
         };
@@ -307,7 +337,7 @@ public static class RuntimeConfigBuilder
 
         var rules = new JsonArray();
 
-        if (settings.Ipv6Protection)
+        if (carriesIpv6)
         {
             fake["inet6_range"] = FakeIpv6Range;
             rules.Add(new JsonObject
@@ -338,10 +368,30 @@ public static class RuntimeConfigBuilder
         return dns;
     }
 
-    private static JsonArray BuildInbounds(AppSettings settings, int proxyPort)
+    /// <summary>
+    /// The resolver that answers outside the tunnel. Bound to an adapter, it is that adapter's
+    /// own resolvers: the system list would include the ones belonging to a VPN we have just
+    /// stopped dialing through, and those are unreachable from here.
+    /// </summary>
+    private static JsonObject LocalResolver(NetworkBinding? binding)
+    {
+        if (binding is null || binding.DnsAddresses.Count == 0)
+        {
+            return new JsonObject { ["type"] = "local", ["tag"] = LocalResolverTag };
+        }
+
+        return new JsonObject
+        {
+            ["type"] = "udp",
+            ["tag"] = LocalResolverTag,
+            ["server"] = binding.DnsAddresses[0]
+        };
+    }
+
+    private static JsonArray BuildInbounds(AppSettings settings, int proxyPort, bool carriesIpv6, int mtu)
     {
         var addresses = new JsonArray("172.31.255.1/30");
-        if (settings.Ipv6Protection)
+        if (carriesIpv6)
         {
             addresses.Add("fdfe:dcba:9876::1/126");
         }
@@ -352,7 +402,7 @@ public static class RuntimeConfigBuilder
             ["tag"] = "tun-in",
             ["interface_name"] = TunnelInterfaceName,
             ["address"] = addresses,
-            ["mtu"] = TunnelMtu,
+            ["mtu"] = mtu,
             ["auto_route"] = true,
             ["strict_route"] = true
         };

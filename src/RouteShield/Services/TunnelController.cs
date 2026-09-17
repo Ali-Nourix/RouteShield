@@ -1,5 +1,6 @@
 using System.IO;
 using System.Net.Http;
+using System.Net.NetworkInformation;
 using System.Text;
 using RouteShield.Tunnels;
 
@@ -26,6 +27,9 @@ public sealed class TunnelController : IAsyncDisposable
     private static readonly TimeSpan ProbeRetryDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProbeInterval = TimeSpan.FromSeconds(60);
 
+    /// <summary>Adapters settle noisily — a VPN connecting fires several changes — so the rebind waits them out.</summary>
+    private static readonly TimeSpan RebindSettleDelay = TimeSpan.FromSeconds(4);
+
     private readonly CoreProcessService _core = new();
     private readonly FirewallService _firewall = new();
     private readonly NetworkProbe _probe = new();
@@ -39,11 +43,14 @@ public sealed class TunnelController : IAsyncDisposable
     private TunnelSession? _session;
     private CancellationTokenSource? _reconnect;
     private CancellationTokenSource? _probing;
+    private CancellationTokenSource? _rebind;
+    private string? _boundInterface;
 
     public TunnelController()
     {
         _core.OutputReceived += line => AppLog.Write(LogCategory.Core, line);
         _core.Exited += OnCoreExited;
+        NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
         _traffic.SampleReceived += sample =>
         {
             ThroughputMegabytesPerSecond = sample.TotalMegabytesPerSecond;
@@ -85,6 +92,9 @@ public sealed class TunnelController : IAsyncDisposable
 
     /// <summary>The core's own loopback proxy while the tunnel is up, for work that has to go through it.</summary>
     public Uri? ProxyUri { get; private set; }
+
+    /// <summary>The adapter the tunnel is leaving on, or null while it follows the system default route.</summary>
+    public string? BoundInterface => _boundInterface;
 
     public VpnProfile? ActiveProfile => _session?.Profile;
 
@@ -379,6 +389,82 @@ public sealed class TunnelController : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Another VPN connecting or dropping rewrites the routing table under us. The tunnel is
+    /// rebuilt on the adapter that is right now, rather than left dialling through an interface
+    /// that has stopped carrying traffic.
+    /// </summary>
+    private void OnNetworkAddressChanged(object? sender, EventArgs args)
+    {
+        if (_session is null || State != TunnelState.Connected)
+        {
+            return;
+        }
+
+        _rebind?.Cancel();
+        _rebind?.Dispose();
+
+        var cancellation = new CancellationTokenSource();
+        _rebind = cancellation;
+        _ = RebindAsync(cancellation.Token);
+    }
+
+    private async Task RebindAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(RebindSettleDelay, cancellationToken);
+
+            var session = _session;
+            if (session is null || State != TunnelState.Connected)
+            {
+                return;
+            }
+
+            var desired = NetworkAdapters.Resolve(session.Settings)?.InterfaceName;
+            if (string.Equals(desired, _boundInterface, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            await _transition.WaitAsync(cancellationToken);
+            try
+            {
+                if (!ReferenceEquals(_session, session) || State != TunnelState.Connected)
+                {
+                    return;
+                }
+
+                AppLog.Write(
+                    LogCategory.Network,
+                    $"The network changed; moving the tunnel from \"{_boundInterface ?? "the system default"}\" to \"{desired ?? "the system default"}\".");
+
+                Report(TunnelState.Connecting, "Moving the tunnel to the adapter that is up now");
+
+                // The leak guard stays armed across the restart: nothing should slip out while
+                // the core is down, least of all during a network change.
+                await TearDownAsync(keepKillSwitch: true);
+                await StartAsync(session);
+            }
+            catch (Exception exception) when (IsExpected(exception))
+            {
+                AppLog.Write(LogCategory.Network, $"The tunnel could not be moved: {exception.Message}");
+                Fail(exception.Message);
+            }
+            finally
+            {
+                _transition.Release();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // A later change took over, or the tunnel went down while we waited.
+        }
+    }
+
+    private static bool IsExpected(Exception exception) =>
+        exception is InvalidOperationException or IOException or TimeoutException or HttpRequestException;
+
     private void OnCoreExited(int exitCode)
     {
         AppLog.Write(LogCategory.Core, $"The core exited unexpectedly (code {exitCode})");
@@ -545,7 +631,18 @@ public sealed class TunnelController : IAsyncDisposable
             .Select(route => _lastBridgePorts.TryGetValue((route.Kind, route.ProfileId), out var port) ? port : (int?)null)
             .ToArray();
 
-        var runtime = RuntimeConfigBuilder.Build(target, settings, apps, bridges, PortPlan.Reserve(bridges.Count, preferred));
+        var binding = NetworkAdapters.Resolve(settings);
+        _boundInterface = binding?.InterfaceName;
+
+        AppLog.Write(
+            LogCategory.Network,
+            binding is null
+                ? "Leaving on whichever adapter holds the default route."
+                : $"Leaving on \"{binding.InterfaceName}\"" +
+                  (binding.DnsAddresses.Count > 0 ? $", resolving through {binding.DnsAddresses[0]}" : string.Empty));
+
+        var runtime = RuntimeConfigBuilder.Build(
+            target, settings, apps, bridges, PortPlan.Reserve(bridges.Count, preferred), binding);
 
         AppLog.Write(
             LogCategory.Config,
@@ -588,6 +685,9 @@ public sealed class TunnelController : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        NetworkChange.NetworkAddressChanged -= OnNetworkAddressChanged;
+        _rebind?.Cancel();
+        _rebind?.Dispose();
         CancelReconnect();
         StopProbing();
         _traffic.Dispose();

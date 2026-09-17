@@ -9,6 +9,9 @@ public static class TunnelParser
 {
     public const string ProxyTag = "proxy";
 
+    /// <summary>What sing-box gives a WireGuard peer that does not name an MTU.</summary>
+    public const int DefaultWireGuardMtu = 1408;
+
     /// <summary>Outbound types RouteShield can lift out of a pasted sing-box configuration.</summary>
     private static readonly HashSet<string> SupportedJsonOutbounds = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -452,13 +455,15 @@ public static class TunnelParser
             peerNodes.Add(node);
         }
 
+        var addresses = SplitCsv(Required(iface.Values, "Address"));
+
         var endpoint = new JsonObject
         {
             ["type"] = "wireguard",
             ["tag"] = ProxyTag,
             ["system"] = false,
             ["name"] = "RouteShield-WG",
-            ["address"] = ToJsonArray(SplitCsv(Required(iface.Values, "Address"))),
+            ["address"] = ToJsonArray(addresses),
             ["private_key"] = Required(iface.Values, "PrivateKey"),
             ["peers"] = peerNodes
         };
@@ -472,7 +477,9 @@ public static class TunnelParser
         {
             FormatName = "WireGuard",
             DisplayName = "WireGuard",
-            Endpoint = endpoint
+            Endpoint = endpoint,
+            CarriesIpv6 = addresses.Any(address => address.Contains(':')),
+            LinkMtu = mtu > 0 ? mtu : DefaultWireGuardMtu
         };
 
         var carriesDefaultRoute = peers.Any(peer =>
@@ -508,11 +515,15 @@ public static class TunnelParser
                 endpoint["tag"] = ProxyTag;
                 endpoint["system"] = false;
 
+                var addresses = endpoint["address"] as JsonArray;
+
                 return new ParsedTunnel
                 {
                     FormatName = "sing-box WireGuard",
                     DisplayName = "WireGuard",
-                    Endpoint = endpoint
+                    Endpoint = endpoint,
+                    CarriesIpv6 = addresses?.Any(address => address?.GetValue<string>().Contains(':') == true) ?? false,
+                    LinkMtu = ReadInt(endpoint, "mtu") ?? DefaultWireGuardMtu
                 };
             }
         }

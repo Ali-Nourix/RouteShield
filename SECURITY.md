@@ -14,6 +14,10 @@
   name itself travels to the proxy, so a blocked or lying local resolver cannot redirect a
   routed application. Only the resolver used for dialing the proxy server itself stays on the
   physical adapter, because nothing can resolve through a tunnel that is not up yet.
+- **Outbound adapter.** The tunnel's own connections leave on the adapter named in settings,
+  not on whatever holds the default route. This keeps another VPN from carrying RouteShield's
+  traffic, and it keeps working when that VPN connects or drops; it does not hide the tunnel
+  from the network the chosen adapter is on.
 - **QUIC.** With the QUIC refusal on, routed applications cannot open UDP connections to ports
   443 and 80; they fall back to TCP, which the tunnel carries properly. This is a reliability
   measure, not a privacy one: nothing about it hides traffic that would otherwise be visible.

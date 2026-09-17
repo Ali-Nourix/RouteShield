@@ -151,6 +151,45 @@
                 </Grid>
 
                 <Border Margin="0,26,0,0" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
+                    <Grid>
+                        <TextBlock Style="{StaticResource SectionTitle}" Text="Outbound adapter" />
+                        <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                Command="{Binding RefreshAdaptersCommand}" Content="Rescan" />
+                    </Grid>
+                </Border>
+
+                <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1" Padding="0,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SettingName}" Text="Which connection the tunnel itself uses" />
+                        <TextBlock Style="{StaticResource HelpText}" Margin="0,3,0,0" MaxWidth="720"
+                                   HorizontalAlignment="Left"
+                                   Text="Another VPN — a work client such as Cisco AnyConnect — takes over the default route while it is connected, and the tunnel then dials the proxy server from inside that network, where its firewall usually refuses the connection. Naming a physical adapter keeps RouteShield on your own internet whatever else is running. Takes effect on the next connect." />
+
+                        <Border Margin="0,12,0,0" CornerRadius="{StaticResource RadiusMd}" BorderThickness="1"
+                                BorderBrush="{DynamicResource DividerBrush}" HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton Style="{StaticResource SegmentOption}" Content="Avoid other VPNs" GroupName="Outbound"
+                                             IsChecked="{Binding OutboundBinding, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=AvoidOtherVpns}" />
+                                <RadioButton Style="{StaticResource SegmentOption}" Content="Follow Windows" GroupName="Outbound"
+                                             IsChecked="{Binding OutboundBinding, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=FollowWindows}" />
+                                <RadioButton Style="{StaticResource SegmentOption}" Content="Choose one" GroupName="Outbound"
+                                             IsChecked="{Binding OutboundBinding, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=Fixed}" />
+                            </StackPanel>
+                        </Border>
+
+                        <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboItem}"
+                                  Margin="0,12,0,0" MaxWidth="420" HorizontalAlignment="Left"
+                                  Tag="No adapter available" DisplayMemberPath="Label"
+                                  IsEnabled="{Binding CanChooseAdapter}"
+                                  ItemsSource="{Binding OutboundAdapters}"
+                                  SelectedItem="{Binding SelectedOutboundAdapter, Mode=TwoWay}" />
+
+                        <TextBlock Style="{StaticResource Caption}" Margin="0,8,0,0" TextWrapping="Wrap" MaxWidth="720"
+                                   HorizontalAlignment="Left" Text="{Binding OutboundSummary}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Margin="0,26,0,0" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
                     <TextBlock Style="{StaticResource SectionTitle}" Text="Appearance" />
                 </Border>
 

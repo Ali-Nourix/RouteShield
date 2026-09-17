@@ -23,6 +23,8 @@ the tunnel; everything else keeps your own connection.
   browser load a page and then stall on the video; refusing it puts the browser back on TCP.
 - **Domestic traffic stays home** — `.ir` and the large Iranian services go out on your own
   connection instead of abroad and back.
+- **Immune to your other VPN** — the tunnel names the adapter it leaves on, so a corporate
+  client taking over the default route cannot drag RouteShield's own traffic through it.
 - **Subscriptions** — HTTPS subscription URLs, plain or Base64, refreshed on demand and
   de-duplicated. URLs are sealed with DPAPI before they touch disk.
 - **Application kill switch** — while the tunnel is up, the routed executables are blocked from
@@ -71,7 +73,7 @@ Options pass straight through:
 
 ```cmd
 build.cmd -Runtime win-arm64
-build.cmd -Version 1.4.0
+build.cmd -Version 1.5.0
 ```
 
 ## Layout
@@ -125,6 +127,13 @@ RouteShield builds one sing-box configuration per connection:
   node of the subscription. The group tests each member against `generate_204` every three
   minutes, uses the fastest, and switches when the chosen one fails or a member is faster by a
   clear margin; existing connections are left alone.
+- The core is told **which adapter to dial on** rather than asked to detect it. Detection
+  follows the default route, which is exactly what another VPN takes over; the bound adapter's
+  own resolvers come with it, because the system resolver list holds servers that only answer
+  through that other VPN. A network change moves the tunnel to the adapter that is up now.
+- A node that cannot carry IPv6, or that wraps each packet in a datagram, shapes the tunnel:
+  no IPv6 addresses on the interface for the first, and no frame larger than the peer's MTU
+  for the second.
 - Rules are decided in order: sniff, DNS hijack, the probe and bridge inbounds, private
   addresses and local names, domestic names, the QUIC refusal, then the process policy. Each
   one that matches ends the decision, so a domestic site is never denied QUIC it could have

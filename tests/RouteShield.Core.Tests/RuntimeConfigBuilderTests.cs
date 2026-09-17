@@ -301,6 +301,110 @@ public class RuntimeConfigBuilderTests
     }
 
     [Fact]
+    public void An_unbound_run_follows_whatever_holds_the_default_route()
+    {
+        var route = Build(Fixtures.Settings())["route"]!.AsObject();
+
+        Assert.True(route["auto_detect_interface"]!.GetValue<bool>());
+        Assert.Null(route["default_interface"]);
+    }
+
+    [Fact]
+    public void A_bound_run_names_its_adapter_and_never_asks_for_the_default_route()
+    {
+        // Another VPN owns the default route while it is connected; detecting it is the bug.
+        var runtime = RuntimeConfigBuilder.Build(
+            ConnectionTarget.Single(TunnelParser.Parse(Fixtures.VlessReality)),
+            Fixtures.Settings(), Fixtures.Apps, [], FixedPorts,
+            new NetworkBinding("Wi-Fi", ["192.168.0.1"]));
+
+        var root = JsonNode.Parse(runtime.Json)!.AsObject();
+        var route = root["route"]!.AsObject();
+
+        Assert.Equal("Wi-Fi", route["default_interface"]!.GetValue<string>());
+        Assert.Null(route["auto_detect_interface"]);
+
+        // ...and resolves on that adapter, not through a resolver that answers on the VPN.
+        var resolver = root["dns"]!["servers"]!.AsArray().OfType<JsonObject>()
+            .Single(server => server["tag"]!.GetValue<string>() == RuntimeConfigBuilder.LocalResolverTag);
+
+        Assert.Equal("udp", resolver["type"]!.GetValue<string>());
+        Assert.Equal("192.168.0.1", resolver["server"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void A_bound_adapter_that_offers_no_resolver_keeps_the_system_one()
+    {
+        var runtime = RuntimeConfigBuilder.Build(
+            ConnectionTarget.Single(TunnelParser.Parse(Fixtures.VlessReality)),
+            Fixtures.Settings(), Fixtures.Apps, [], FixedPorts,
+            new NetworkBinding("Ethernet", []));
+
+        var resolver = JsonNode.Parse(runtime.Json)!["dns"]!["servers"]!.AsArray().OfType<JsonObject>()
+            .Single(server => server["tag"]!.GetValue<string>() == RuntimeConfigBuilder.LocalResolverTag);
+
+        Assert.Equal("local", resolver["type"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void A_node_without_ipv6_of_its_own_is_never_handed_an_ipv6_destination()
+    {
+        // "missing IPv6 local address" on every v6 connection is what this prevents.
+        var runtime = RuntimeConfigBuilder.Build(
+            ConnectionTarget.Single(TunnelParser.Parse(Fixtures.WireGuardIpv4Only)),
+            Fixtures.Settings(ipv6: true), Fixtures.Apps, [], FixedPorts);
+
+        var root = JsonNode.Parse(runtime.Json)!.AsObject();
+        var addresses = root["inbounds"]!.AsArray().OfType<JsonObject>()
+            .Single(inbound => inbound["type"]!.GetValue<string>() == "tun")["address"]!.AsArray();
+
+        Assert.Single(addresses);
+        Assert.Equal("ipv4_only", root["dns"]!["strategy"]!.GetValue<string>());
+
+        var answered = root["dns"]!["rules"]!.AsArray().OfType<JsonObject>()
+            .Single(rule => rule["action"]?.GetValue<string>() == "predefined");
+
+        Assert.Equal("NOERROR", answered["rcode"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void A_node_with_ipv6_keeps_it()
+    {
+        var runtime = RuntimeConfigBuilder.Build(
+            ConnectionTarget.Single(TunnelParser.Parse(Fixtures.WireGuardConf)),
+            Fixtures.Settings(ipv6: true), Fixtures.Apps, [], FixedPorts);
+
+        var addresses = JsonNode.Parse(runtime.Json)!["inbounds"]!.AsArray().OfType<JsonObject>()
+            .Single(inbound => inbound["type"]!.GetValue<string>() == "tun")["address"]!.AsArray();
+
+        Assert.Equal(2, addresses.Count);
+    }
+
+    [Fact]
+    public void The_tunnel_interface_never_offers_more_than_the_node_can_carry()
+    {
+        static int MtuOf(JsonObject root) => root["inbounds"]!.AsArray().OfType<JsonObject>()
+            .Single(inbound => inbound["type"]!.GetValue<string>() == "tun")["mtu"]!.GetValue<int>();
+
+        // A WireGuard peer wraps each packet in one datagram; a 9000-byte frame cannot be sent.
+        var wireGuard = RuntimeConfigBuilder.Build(
+            ConnectionTarget.Single(TunnelParser.Parse(Fixtures.WireGuardConf)),
+            Fixtures.Settings(), Fixtures.Apps, [], FixedPorts);
+
+        Assert.Equal(1420, MtuOf(JsonNode.Parse(wireGuard.Json)!.AsObject()));
+
+        // A peer that declares no MTU gets the core's own default rather than the full frame.
+        var silent = RuntimeConfigBuilder.Build(
+            ConnectionTarget.Single(TunnelParser.Parse(Fixtures.WireGuardIpv4Only)),
+            Fixtures.Settings(), Fixtures.Apps, [], FixedPorts);
+
+        Assert.Equal(TunnelParser.DefaultWireGuardMtu, MtuOf(JsonNode.Parse(silent.Json)!.AsObject()));
+
+        // Everything else keeps the large frame.
+        Assert.Equal(9000, MtuOf(Build(Fixtures.Settings())));
+    }
+
+    [Fact]
     public void Quic_is_refused_only_for_the_applications_the_policy_routes()
     {
         var rule = QuicRuleOf(Build(Fixtures.Settings()))!;

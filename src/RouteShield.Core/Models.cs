@@ -11,6 +11,26 @@ public enum RouteMode
     FullTunnel
 }
 
+/// <summary>
+/// Which network adapter the tunnel's own traffic leaves on.
+///
+/// This matters because another VPN — a corporate client such as Cisco AnyConnect, say —
+/// takes over the default route while it is connected. The core then dials the proxy server
+/// through that VPN, where a corporate firewall usually refuses it, and RouteShield reports
+/// itself connected while nothing can actually reach the outside.
+/// </summary>
+public enum OutboundBinding
+{
+    /// <summary>Pick a physical adapter and ignore adapters belonging to other VPNs. The default.</summary>
+    AvoidOtherVpns,
+
+    /// <summary>Whatever Windows says the default route is, other VPNs included.</summary>
+    FollowWindows,
+
+    /// <summary>One named adapter, whatever else happens.</summary>
+    Fixed
+}
+
 /// <summary>Which palette the window draws with; System follows the Windows app colour.</summary>
 public enum AppTheme
 {
@@ -306,4 +326,9 @@ public sealed class AppSettings
 
     /// <summary>Keeps Iranian sites on the local connection instead of sending them abroad and back.</summary>
     public bool DirectDomesticSites { get; set; } = true;
+
+    public OutboundBinding OutboundBinding { get; set; } = OutboundBinding.AvoidOtherVpns;
+
+    /// <summary>The adapter name used when <see cref="OutboundBinding"/> is Fixed; the Windows connection name.</summary>
+    public string OutboundAdapter { get; set; } = string.Empty;
 }

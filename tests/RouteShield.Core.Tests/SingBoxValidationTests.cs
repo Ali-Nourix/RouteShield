@@ -111,6 +111,39 @@ public class SingBoxValidationTests
     }
 
     [SkippableFact]
+    public void A_configuration_bound_to_one_adapter_is_accepted_by_the_core()
+    {
+        var core = CorePath;
+        Skip.If(core is null, "Set ROUTESHIELD_SINGBOX to a sing-box executable to run core validation.");
+
+        var runtime = RuntimeConfigBuilder.Build(
+            Fixtures.AutomaticGroup(),
+            Fixtures.Settings(allowLan: true),
+            Fixtures.Apps,
+            [BridgeRoute.Active(new VpnProfile { Name = "Auto" }), BridgeRoute.Bypass()],
+            new PortPlan(21080, 29090, "s3cret", [23000, 23001]),
+            new NetworkBinding("Wi-Fi", ["192.168.0.1"]));
+
+        AssertAccepted(core!, runtime.Json);
+    }
+
+    [SkippableFact]
+    public void A_wireguard_only_configuration_is_accepted_by_the_core()
+    {
+        var core = CorePath;
+        Skip.If(core is null, "Set ROUTESHIELD_SINGBOX to a sing-box executable to run core validation.");
+
+        var runtime = RuntimeConfigBuilder.Build(
+            ConnectionTarget.Single(TunnelParser.Parse(Fixtures.WireGuardIpv4Only)),
+            Fixtures.Settings(ipv6: true),
+            Fixtures.Apps,
+            [],
+            new PortPlan(21080, 29090, "s3cret", []));
+
+        AssertAccepted(core!, runtime.Json);
+    }
+
+    [SkippableFact]
     public void An_automatic_group_is_accepted_by_the_core()
     {
         var core = CorePath;

@@ -87,6 +87,7 @@ public sealed class ShellViewModel : Observable
         DeleteProfileCommand = new AsyncRelayCommand(DeleteProfileAsync, () => CanEditSelectedProfile);
         DetectFormatCommand = new RelayCommand(DetectFormat);
         ToggleEditorCommand = new RelayCommand(() => IsEditorOpen = !IsEditorOpen);
+        RefreshAdaptersCommand = new RelayCommand(RefreshAdapters);
 
         AddSubscriptionCommand = new AsyncRelayCommand(AddSubscriptionAsync);
         EditSubscriptionCommand = new AsyncRelayCommand(EditSubscriptionAsync);
@@ -151,6 +152,9 @@ public sealed class ShellViewModel : Observable
 
     /// <summary>Everything the connect button can be pointed at: automatic entries first, then every node.</summary>
     public ObservableCollection<VpnProfile> ConnectTargets { get; } = [];
+
+    /// <summary>The adapters the tunnel could leave on, refreshed on demand.</summary>
+    public ObservableCollection<NetworkAdapterInfo> OutboundAdapters { get; } = [];
 
     public ListCollectionView LibraryView { get; }
 
@@ -329,6 +333,80 @@ public sealed class ShellViewModel : Observable
     {
         get => _settings.DirectDomesticSites;
         set => ApplySetting(settings => settings.DirectDomesticSites = value, _settings.DirectDomesticSites == value);
+    }
+
+    // ══ Outbound adapter ══
+
+    public OutboundBinding OutboundBinding
+    {
+        get => _settings.OutboundBinding;
+        set
+        {
+            if (_settings.OutboundBinding == value)
+            {
+                return;
+            }
+
+            _settings.OutboundBinding = value;
+
+            // Picking "one adapter" with nothing chosen yet lands on the one the automatic
+            // choice would have made, so the setting is never left pointing at nothing.
+            if (value == OutboundBinding.Fixed && _settings.OutboundAdapter.Length == 0)
+            {
+                _settings.OutboundAdapter = OutboundAdapters.FirstOrDefault(adapter => !adapter.IsVirtual)?.Name
+                                            ?? OutboundAdapters.FirstOrDefault()?.Name
+                                            ?? string.Empty;
+            }
+
+            Raise(nameof(OutboundBinding));
+            Raise(nameof(SelectedOutboundAdapter));
+            Raise(nameof(CanChooseAdapter));
+            Raise(nameof(OutboundSummary));
+            QueueSave();
+        }
+    }
+
+    public bool CanChooseAdapter => OutboundBinding == OutboundBinding.Fixed;
+
+    public NetworkAdapterInfo? SelectedOutboundAdapter
+    {
+        get => OutboundAdapters.FirstOrDefault(adapter =>
+            string.Equals(adapter.Name, _settings.OutboundAdapter, StringComparison.OrdinalIgnoreCase));
+        set
+        {
+            if (value is null || string.Equals(_settings.OutboundAdapter, value.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _settings.OutboundAdapter = value.Name;
+            Raise(nameof(SelectedOutboundAdapter));
+            Raise(nameof(OutboundSummary));
+            QueueSave();
+        }
+    }
+
+    /// <summary>What the current choice resolves to right now, so the effect is visible before connecting.</summary>
+    public string OutboundSummary
+    {
+        get
+        {
+            if (IsConnected && _tunnel.BoundInterface is { } bound)
+            {
+                return $"The tunnel is leaving on \"{bound}\".";
+            }
+
+            if (OutboundBinding == OutboundBinding.FollowWindows)
+            {
+                return "Following the default route. While another VPN is connected, the tunnel goes through it.";
+            }
+
+            var resolved = NetworkAdapters.Resolve(_settings);
+            return resolved is null
+                ? "No physical adapter could be identified; the default route will be followed."
+                : $"Would leave on \"{resolved.InterfaceName}\"" +
+                  (resolved.DnsAddresses.Count > 0 ? $", resolving through {resolved.DnsAddresses[0]}." : ".");
+        }
     }
 
     public AppTheme Theme
@@ -621,6 +699,8 @@ public sealed class ShellViewModel : Observable
 
     public RelayCommand ToggleEditorCommand { get; }
 
+    public RelayCommand RefreshAdaptersCommand { get; }
+
     public AsyncRelayCommand AddSubscriptionCommand { get; }
 
     public AsyncRelayCommand EditSubscriptionCommand { get; }
@@ -678,6 +758,7 @@ public sealed class ShellViewModel : Observable
         }
 
         RebuildLibrary();
+        RefreshAdapters();
         ThemeManager.Apply(_settings.Theme);
 
         SelectedProfile = FindSelectable(_settings.SelectedProfileId) ?? Profiles.FirstOrDefault();
@@ -1101,6 +1182,18 @@ public sealed class ShellViewModel : Observable
         return added;
     }
 
+    private void RefreshAdapters()
+    {
+        OutboundAdapters.Clear();
+        foreach (var adapter in NetworkAdapters.List())
+        {
+            OutboundAdapters.Add(adapter);
+        }
+
+        Raise(nameof(SelectedOutboundAdapter));
+        Raise(nameof(OutboundSummary));
+    }
+
     private bool IsSelectable(VpnProfile profile) => Profiles.Contains(profile) || _autoProfiles.ContainsValue(profile);
 
     private VpnProfile? FindSelectable(Guid? id) => id is null
@@ -1428,6 +1521,8 @@ public sealed class ShellViewModel : Observable
         _settings.TlsFragment = defaults.TlsFragment;
         _settings.BlockQuic = defaults.BlockQuic;
         _settings.DirectDomesticSites = defaults.DirectDomesticSites;
+        _settings.OutboundBinding = defaults.OutboundBinding;
+        _settings.OutboundAdapter = defaults.OutboundAdapter;
         BrowserBridgeEnabled = defaults.BrowserBridgeEnabled;
         Theme = defaults.Theme;
 
@@ -1454,7 +1549,8 @@ public sealed class ShellViewModel : Observable
                          nameof(IsTransitioning), nameof(IsKillSwitchHolding), nameof(CanConnect),
                          nameof(UptimeText), nameof(LatencyText), nameof(ThroughputText), nameof(ExitIpText),
                          nameof(ProbeFailure), nameof(CoreVersionText), nameof(KillSwitchStateText),
-                         nameof(AppStateWord), nameof(BridgeSummary), nameof(SelectedProfileLabel)
+                         nameof(AppStateWord), nameof(BridgeSummary), nameof(SelectedProfileLabel),
+                         nameof(OutboundSummary)
                      })
             {
                 Raise(property);
@@ -1561,6 +1657,7 @@ public sealed class ShellViewModel : Observable
                      nameof(Ipv6Protection), nameof(AllowLan), nameof(AutoReconnect), nameof(AutoConnect),
                      nameof(CloseToTray), nameof(StartWithWindows), nameof(BrowserBridgeEnabled), nameof(BridgeSummary),
                      nameof(TlsFragment), nameof(BlockQuic), nameof(DirectDomesticSites), nameof(Theme),
+                     nameof(OutboundBinding), nameof(SelectedOutboundAdapter), nameof(CanChooseAdapter), nameof(OutboundSummary),
                      nameof(ShowFirstRun), nameof(AppSummary), nameof(StateWord), nameof(StatusDetail)
                  })
         {

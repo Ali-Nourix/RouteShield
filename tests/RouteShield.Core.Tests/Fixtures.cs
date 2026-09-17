@@ -36,6 +36,18 @@ internal static class Fixtures
         PersistentKeepalive = 25
         """;
 
+    /// <summary>A peer with no address of its own beyond IPv4, and no MTU declared.</summary>
+    public const string WireGuardIpv4Only = """
+        [Interface]
+        PrivateKey = /TjUAUe2m107+7gwTN9jNfWz/FEUrEacrL37qj64/D0=
+        Address = 10.8.0.2/32
+
+        [Peer]
+        PublicKey = /TjUAUe2m107+7gwTN9jNfWz/FEUrEacrL37qj64/D0=
+        AllowedIPs = 0.0.0.0/0
+        Endpoint = wg.example.net:51820
+        """;
+
     public const string SingBoxJson = """
         {
           "outbounds": [
