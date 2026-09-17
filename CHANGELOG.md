@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.5.1
+
+### Fixed
+
+- **1.5.0 broke name resolution.** Pinning the outbound adapter also pointed the resolver at
+  that adapter's own DNS server, on the reasoning that the system list might hold a server only
+  reachable through the VPN we had stopped using. On a censored network that reasoning is
+  backwards: the ISP's own resolver refuses the very names the tunnel exists to reach — 1014
+  `REFUSED` answers in one session, including the WireGuard profile's own peer address, so the
+  tunnel could not come up at all — where the resolver Windows is configured with answers them.
+  Names are answered by the system resolver again, bound adapter or not. Only the route is
+  pinned now.
+
+### Added
+
+- **The adapter is verified before the tunnel uses it.** A corporate VPN in full-tunnel mode
+  takes the default route and leaves no route on the physical adapter, so a socket bound to it
+  fails instantly with "a socket operation was attempted to an unreachable network" — every
+  dial, the proxy server included. RouteShield now checks whether the operating system can route
+  on the adapter it picked, moves to the next candidate if it cannot, and when none can carry
+  traffic says so on the dashboard: which adapter does hold the default route, and that a VPN in
+  full-tunnel mode is what does this. No setting can undo that from inside RouteShield; the
+  message now says so instead of leaving a tunnel that looks connected and reaches nothing.
+- **Probe failures name their cause.** "The SSL connection could not be established" is the
+  outermost message of a chain and says nothing on its own; the whole chain is now reported.
+
 ## 1.5.0
 
 ### Fixed

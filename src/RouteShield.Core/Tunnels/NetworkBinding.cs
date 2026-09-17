@@ -1,15 +1,12 @@
 namespace RouteShield.Tunnels;
 
 /// <summary>
-/// The adapter the core dials out on, and the resolvers that adapter offers.
+/// The adapter the core dials out on.
 ///
-/// Both halves matter together. Pinning the adapter without the resolvers would leave the core
-/// asking a corporate DNS server that is only reachable through the VPN we just stopped using,
-/// so a bound run carries the chosen adapter's own resolvers instead of the system list.
+/// It deliberately carries no resolver. Naming the adapter's own DNS server looks tidy and is
+/// wrong: on a censored network the ISP's resolver refuses the very names the tunnel exists to
+/// reach — including the proxy provider's own address — while the system resolver Windows is
+/// configured with answers them. The resolver stays the system's; only the route is pinned.
 /// </summary>
 /// <param name="InterfaceName">The Windows connection name, as the core knows it: "Wi-Fi", "Ethernet".</param>
-/// <param name="DnsAddresses">Resolvers reachable on that adapter; empty falls back to the system resolver.</param>
-public sealed record NetworkBinding(string InterfaceName, IReadOnlyList<string> DnsAddresses)
-{
-    public static NetworkBinding? None => null;
-}
+public sealed record NetworkBinding(string InterfaceName);

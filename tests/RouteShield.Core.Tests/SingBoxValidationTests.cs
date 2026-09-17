@@ -122,7 +122,7 @@ public class SingBoxValidationTests
             Fixtures.Apps,
             [BridgeRoute.Active(new VpnProfile { Name = "Auto" }), BridgeRoute.Bypass()],
             new PortPlan(21080, 29090, "s3cret", [23000, 23001]),
-            new NetworkBinding("Wi-Fi", ["192.168.0.1"]));
+            new NetworkBinding("Wi-Fi"));
 
         AssertAccepted(core!, runtime.Json);
     }

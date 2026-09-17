@@ -17,7 +17,9 @@
 - **Outbound adapter.** The tunnel's own connections leave on the adapter named in settings,
   not on whatever holds the default route. This keeps another VPN from carrying RouteShield's
   traffic, and it keeps working when that VPN connects or drops; it does not hide the tunnel
-  from the network the chosen adapter is on.
+  from the network the chosen adapter is on. When no adapter can route on its own — a corporate
+  VPN in full-tunnel mode — the tunnel follows the system default and says so rather than
+  pretending to be isolated from it.
 - **QUIC.** With the QUIC refusal on, routed applications cannot open UDP connections to ports
   443 and 80; they fall back to TCP, which the tunnel carries properly. This is a reliability
   measure, not a privacy one: nothing about it hides traffic that would otherwise be visible.

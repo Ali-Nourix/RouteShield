@@ -72,7 +72,7 @@ build.cmd
 
 ```cmd
 build.cmd -Runtime win-arm64
-build.cmd -Version 1.5.0
+build.cmd -Version 1.5.1
 ```
 
 اگر `build.cmd` را با دوبار کلیک اجرا کنید، پنجره تا زمانی که نتیجه را ببینید باز می‌ماند.

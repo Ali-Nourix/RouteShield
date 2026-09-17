@@ -108,6 +108,10 @@
                                Text="{Binding BridgeSummary}" />
                     <TextBlock Style="{StaticResource Caption}" Margin="0,3,0,0" TextWrapping="Wrap"
                                Foreground="{DynamicResource AccentOnInkBrush}"
+                               Text="{Binding OutboundWarning}"
+                               Visibility="{Binding OutboundWarning, Converter={StaticResource ShowIfPresent}}" />
+                    <TextBlock Style="{StaticResource Caption}" Margin="0,3,0,0" TextWrapping="Wrap"
+                               Foreground="{DynamicResource AccentOnInkBrush}"
                                Text="{Binding ProbeFailure}"
                                Visibility="{Binding ProbeFailure, Converter={StaticResource ShowIfPresent}}" />
                 </StackPanel>

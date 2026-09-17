@@ -202,6 +202,9 @@ public sealed class ShellViewModel : Observable
 
     public string? ProbeFailure => _tunnel.ProbeFailure is { } failure ? $"Probe failed · {failure}" : null;
 
+    /// <summary>Shown on the dashboard when the tunnel could not leave on the adapter it was told to.</summary>
+    public string? OutboundWarning => _tunnel.BindingWarning;
+
     public string CoreVersionText => _tunnel.CoreVersion;
 
     public string KillSwitchStateText => _tunnel.KillSwitchArmed ? "Kill switch armed" : "Kill switch idle";
@@ -404,8 +407,7 @@ public sealed class ShellViewModel : Observable
             var resolved = NetworkAdapters.Resolve(_settings);
             return resolved is null
                 ? "No physical adapter could be identified; the default route will be followed."
-                : $"Would leave on \"{resolved.InterfaceName}\"" +
-                  (resolved.DnsAddresses.Count > 0 ? $", resolving through {resolved.DnsAddresses[0]}." : ".");
+                : $"Would leave on \"{resolved.InterfaceName}\", if it can still reach the internet when you connect.";
         }
     }
 
@@ -1550,7 +1552,7 @@ public sealed class ShellViewModel : Observable
                          nameof(UptimeText), nameof(LatencyText), nameof(ThroughputText), nameof(ExitIpText),
                          nameof(ProbeFailure), nameof(CoreVersionText), nameof(KillSwitchStateText),
                          nameof(AppStateWord), nameof(BridgeSummary), nameof(SelectedProfileLabel),
-                         nameof(OutboundSummary)
+                         nameof(OutboundSummary), nameof(OutboundWarning)
                      })
             {
                 Raise(property);

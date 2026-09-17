@@ -316,34 +316,32 @@ public class RuntimeConfigBuilderTests
         var runtime = RuntimeConfigBuilder.Build(
             ConnectionTarget.Single(TunnelParser.Parse(Fixtures.VlessReality)),
             Fixtures.Settings(), Fixtures.Apps, [], FixedPorts,
-            new NetworkBinding("Wi-Fi", ["192.168.0.1"]));
+            new NetworkBinding("Wi-Fi"));
 
-        var root = JsonNode.Parse(runtime.Json)!.AsObject();
-        var route = root["route"]!.AsObject();
+        var route = JsonNode.Parse(runtime.Json)!["route"]!.AsObject();
 
         Assert.Equal("Wi-Fi", route["default_interface"]!.GetValue<string>());
         Assert.Null(route["auto_detect_interface"]);
-
-        // ...and resolves on that adapter, not through a resolver that answers on the VPN.
-        var resolver = root["dns"]!["servers"]!.AsArray().OfType<JsonObject>()
-            .Single(server => server["tag"]!.GetValue<string>() == RuntimeConfigBuilder.LocalResolverTag);
-
-        Assert.Equal("udp", resolver["type"]!.GetValue<string>());
-        Assert.Equal("192.168.0.1", resolver["server"]!.GetValue<string>());
     }
 
-    [Fact]
-    public void A_bound_adapter_that_offers_no_resolver_keeps_the_system_one()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Names_are_always_answered_by_the_system_resolver(bool bound)
     {
+        // Pinning the adapter must not pin the resolver with it: an ISP's own server refuses
+        // the names the tunnel exists to reach, including the proxy provider's own address,
+        // where the resolver Windows is configured with answers them.
         var runtime = RuntimeConfigBuilder.Build(
             ConnectionTarget.Single(TunnelParser.Parse(Fixtures.VlessReality)),
             Fixtures.Settings(), Fixtures.Apps, [], FixedPorts,
-            new NetworkBinding("Ethernet", []));
+            bound ? new NetworkBinding("Wi-Fi") : null);
 
         var resolver = JsonNode.Parse(runtime.Json)!["dns"]!["servers"]!.AsArray().OfType<JsonObject>()
             .Single(server => server["tag"]!.GetValue<string>() == RuntimeConfigBuilder.LocalResolverTag);
 
         Assert.Equal("local", resolver["type"]!.GetValue<string>());
+        Assert.Null(resolver["server"]);
     }
 
     [Fact]

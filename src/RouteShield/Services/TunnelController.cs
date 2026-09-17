@@ -96,6 +96,9 @@ public sealed class TunnelController : IAsyncDisposable
     /// <summary>The adapter the tunnel is leaving on, or null while it follows the system default route.</summary>
     public string? BoundInterface => _boundInterface;
 
+    /// <summary>Why the adapter is not the one that was asked for; null when the choice held.</summary>
+    public string? BindingWarning { get; private set; }
+
     public VpnProfile? ActiveProfile => _session?.Profile;
 
     /// <summary>The node an automatic group is carrying traffic over right now; null for a single node.</summary>
@@ -118,7 +121,7 @@ public sealed class TunnelController : IAsyncDisposable
     /// <summary>Builds the configuration and asks the core to check it, without starting anything.</summary>
     public async Task<string> ValidateAsync(ConnectionTarget target, AppSettings settings, IReadOnlyList<AppTarget> apps)
     {
-        var runtime = BuildRuntime(target, settings, apps, []);
+        var runtime = BuildRuntime(target, settings, apps, [], NetworkAdapters.Resolve(settings));
         var scratch = Path.Combine(AppPaths.Root, "validate.json");
         AppPaths.Ensure();
         await File.WriteAllTextAsync(scratch, runtime.Json, new UTF8Encoding(false));
@@ -214,7 +217,12 @@ public sealed class TunnelController : IAsyncDisposable
     {
         Report(TunnelState.Connecting, "Starting sing-box and attaching the TUN adapter");
 
-        var runtime = BuildRuntime(session.Target, session.Settings, session.Apps, BridgeRoutesFor(session));
+        // Verified before the core starts: an adapter the operating system cannot route on
+        // would fail every dial, and the reason would only show up as a timeout much later.
+        var choice = await NetworkAdapters.ResolveAsync(session.Settings);
+        BindingWarning = choice.Warning;
+
+        var runtime = BuildRuntime(session.Target, session.Settings, session.Apps, BridgeRoutesFor(session), choice.Binding);
 
         AppPaths.Ensure();
         await File.WriteAllTextAsync(AppPaths.RuntimeConfig, runtime.Json, new UTF8Encoding(false));
@@ -239,9 +247,9 @@ public sealed class TunnelController : IAsyncDisposable
         ProxyUri = runtime.ProxyUri;
         GroupSelection = runtime.IsAutomatic ? "choosing…" : null;
 
-        foreach (var binding in runtime.Bridges)
+        foreach (var bridge in runtime.Bridges)
         {
-            _lastBridgePorts[(binding.Kind, binding.ProfileId)] = binding.Port;
+            _lastBridgePorts[(bridge.Kind, bridge.ProfileId)] = bridge.Port;
         }
 
         Report(TunnelState.Connected, DescribeRoute(session.Settings, session.Apps.Count));
@@ -349,8 +357,10 @@ public sealed class TunnelController : IAsyncDisposable
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException
                                           && !cancellationToken.IsCancellationRequested)
         {
-            ProbeFailure = exception.Message;
-            AppLog.Write(LogCategory.Network, $"Probe failed: {exception.Message}");
+            // "The SSL connection could not be established" says nothing on its own; every
+            // useful detail — the reset, the certificate, the closed pipe — is an inner cause.
+            ProbeFailure = Explain(exception);
+            AppLog.Write(LogCategory.Network, $"Probe failed: {Explain(exception)}");
             Changed?.Invoke();
             return false;
         }
@@ -421,7 +431,7 @@ public sealed class TunnelController : IAsyncDisposable
                 return;
             }
 
-            var desired = NetworkAdapters.Resolve(session.Settings)?.InterfaceName;
+            var desired = (await NetworkAdapters.ResolveAsync(session.Settings, cancellationToken)).Binding?.InterfaceName;
             if (string.Equals(desired, _boundInterface, StringComparison.OrdinalIgnoreCase))
             {
                 return;
@@ -566,6 +576,7 @@ public sealed class TunnelController : IAsyncDisposable
         ClearMeasurements();
         Bridges = [];
         ProxyUri = null;
+        BindingWarning = null;
     }
 
     private void ClearMeasurements()
@@ -620,7 +631,8 @@ public sealed class TunnelController : IAsyncDisposable
         ConnectionTarget target,
         AppSettings settings,
         IReadOnlyList<AppTarget> apps,
-        IReadOnlyList<BridgeRoute> bridges)
+        IReadOnlyList<BridgeRoute> bridges,
+        NetworkBinding? binding)
     {
         foreach (var warning in target.Tunnels.SelectMany(tunnel => tunnel.Warnings))
         {
@@ -631,15 +643,13 @@ public sealed class TunnelController : IAsyncDisposable
             .Select(route => _lastBridgePorts.TryGetValue((route.Kind, route.ProfileId), out var port) ? port : (int?)null)
             .ToArray();
 
-        var binding = NetworkAdapters.Resolve(settings);
         _boundInterface = binding?.InterfaceName;
 
         AppLog.Write(
             LogCategory.Network,
             binding is null
                 ? "Leaving on whichever adapter holds the default route."
-                : $"Leaving on \"{binding.InterfaceName}\"" +
-                  (binding.DnsAddresses.Count > 0 ? $", resolving through {binding.DnsAddresses[0]}" : string.Empty));
+                : $"Leaving on \"{binding.InterfaceName}\".");
 
         var runtime = RuntimeConfigBuilder.Build(
             target, settings, apps, bridges, PortPlan.Reserve(bridges.Count, preferred), binding);
@@ -659,6 +669,23 @@ public sealed class TunnelController : IAsyncDisposable
         RouteMode.AllExceptSelected => $"All except {appCount} application(s)",
         _ => "Full system tunnel"
     };
+
+    /// <summary>The whole chain of causes on one line, innermost last.</summary>
+    private static string Explain(Exception exception)
+    {
+        var causes = new List<string>();
+
+        for (var current = exception; current is not null && causes.Count < 4; current = current.InnerException)
+        {
+            var message = current.Message.Trim();
+            if (message.Length > 0 && !causes.Contains(message, StringComparer.Ordinal))
+            {
+                causes.Add(message);
+            }
+        }
+
+        return string.Join(" · ", causes);
+    }
 
     private static string FirstMeaningfulLine(string output)
     {

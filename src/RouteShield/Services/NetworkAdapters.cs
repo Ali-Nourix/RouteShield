@@ -1,9 +1,17 @@
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using RouteShield.Tunnels;
 
 namespace RouteShield.Services;
+
+/// <summary>
+/// Which adapter the tunnel will use, and what the user should know about the choice.
+/// </summary>
+/// <param name="Binding">The adapter to pin, or null to follow the system default route.</param>
+/// <param name="Warning">Set when the choice is not the one that was asked for, and why.</param>
+public sealed record AdapterChoice(NetworkBinding? Binding, string? Warning);
 
 /// <summary>One adapter as the Outbound setting offers it.</summary>
 /// <param name="Name">The Windows connection name, which is also the name the core knows it by.</param>
@@ -49,73 +57,183 @@ public static class NetworkAdapters
         .ThenBy(adapter => adapter.Name, StringComparer.CurrentCultureIgnoreCase)
         .ToList();
 
+    /// <summary>Addresses used only to ask the routing table a question; nothing is sent to them.</summary>
+    private static readonly IPAddress[] ReachabilityTargets = [IPAddress.Parse("1.1.1.1"), IPAddress.Parse("8.8.8.8")];
+
+    private static readonly TimeSpan ReachabilityTimeout = TimeSpan.FromSeconds(2);
+
     /// <summary>
-    /// The binding for the settings as they stand, or null to let the core follow the system.
-    /// A named adapter that is no longer there falls back to the automatic choice rather than
-    /// failing the connection.
+    /// The binding the settings ask for, without checking whether it works. Used to describe the
+    /// choice in the interface; connecting uses <see cref="ResolveAsync"/>, which verifies it.
     /// </summary>
-    public static NetworkBinding? Resolve(AppSettings settings)
+    public static NetworkBinding? Resolve(AppSettings settings) => Candidates(settings).FirstOrDefault();
+
+    /// <summary>
+    /// The binding to connect with: the first candidate the operating system can actually route
+    /// on. This matters because a corporate VPN in tunnel-all mode leaves no route on the
+    /// physical adapter at all, and a socket bound to it fails immediately with "a socket
+    /// operation was attempted to an unreachable network" — every dial, including the proxy
+    /// server. Rather than bind to an adapter that cannot carry anything, the tunnel says so and
+    /// follows the system default.
+    /// </summary>
+    public static async Task<AdapterChoice> ResolveAsync(AppSettings settings, CancellationToken cancellationToken = default)
     {
-        if (settings.OutboundBinding == OutboundBinding.FollowWindows)
+        foreach (var candidate in Candidates(settings))
         {
-            return null;
-        }
-
-        if (settings.OutboundBinding == OutboundBinding.Fixed && settings.OutboundAdapter.Length > 0)
-        {
-            var named = NetworkInterface.GetAllNetworkInterfaces()
-                .FirstOrDefault(adapter => Usable(adapter)
-                                           && string.Equals(adapter.Name, settings.OutboundAdapter, StringComparison.OrdinalIgnoreCase));
-
-            if (named is not null)
+            var adapter = Find(candidate.InterfaceName);
+            if (adapter is null)
             {
-                return Bind(named);
+                continue;
+            }
+
+            if (await CanRouteAsync(adapter, cancellationToken))
+            {
+                return new AdapterChoice(candidate, null);
             }
 
             AppLog.Write(
                 LogCategory.Network,
-                $"The adapter \"{settings.OutboundAdapter}\" is not available; choosing one automatically instead.");
+                $"\"{candidate.InterfaceName}\" has no route to the internet right now; trying another adapter.");
         }
 
-        var physical = NetworkInterface.GetAllNetworkInterfaces()
-            .Where(adapter => Usable(adapter) && !IsVirtual(adapter) && HasGateway(adapter))
-            .OrderByDescending(adapter => adapter.NetworkInterfaceType == NetworkInterfaceType.Ethernet)
-            .ThenByDescending(adapter => adapter.Speed)
-            .FirstOrDefault();
-
-        if (physical is null)
+        if (settings.OutboundBinding == OutboundBinding.FollowWindows)
         {
-            AppLog.Write(LogCategory.Network, "No physical adapter could be identified; following the system default route.");
-            return null;
+            return new AdapterChoice(null, null);
         }
 
-        return Bind(physical);
+        // Nothing physical can carry traffic. In practice this means a corporate VPN is running
+        // in tunnel-all mode: it takes the default route and leaves no route behind it, which no
+        // setting here can undo. Say so, because the alternative is a tunnel that looks
+        // connected and reaches nothing.
+        var holder = DefaultRouteHolder();
+        var blame = holder is null
+            ? "No adapter can reach the internet on its own right now."
+            : $"Only \"{holder.Name}\" ({holder.Description}) can reach the internet right now, so RouteShield has to go through it.";
+
+        var warning = blame + " Another VPN running in full-tunnel mode does this; disconnect it if the connection fails.";
+        AppLog.Write(LogCategory.Network, warning);
+
+        return new AdapterChoice(null, warning);
     }
 
-    private static NetworkBinding Bind(NetworkInterface adapter) =>
-        new(adapter.Name, Resolvers(adapter));
-
-    /// <summary>
-    /// The resolvers reachable on this adapter. The system list is no use once the adapter is
-    /// pinned: it holds the ones belonging to whichever VPN we have just stopped dialling
-    /// through, and those answer on an interface the core no longer uses.
-    /// </summary>
-    private static IReadOnlyList<string> Resolvers(NetworkInterface adapter)
+    /// <summary>The candidates for this setting, best first.</summary>
+    private static List<NetworkBinding> Candidates(AppSettings settings)
     {
-        try
-        {
-            return adapter.GetIPProperties().DnsAddresses
-                .Where(address => address.AddressFamily == AddressFamily.InterNetwork)
-                .Where(address => !IPAddress.IsLoopback(address) && !address.Equals(IPAddress.Any))
-                .Select(address => address.ToString())
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
-        }
-        catch (NetworkInformationException)
+        if (settings.OutboundBinding == OutboundBinding.FollowWindows)
         {
             return [];
         }
+
+        var adapters = NetworkInterface.GetAllNetworkInterfaces().Where(Usable).ToList();
+        var candidates = new List<NetworkBinding>();
+
+        if (settings.OutboundBinding == OutboundBinding.Fixed && settings.OutboundAdapter.Length > 0)
+        {
+            var named = adapters.FirstOrDefault(adapter =>
+                string.Equals(adapter.Name, settings.OutboundAdapter, StringComparison.OrdinalIgnoreCase));
+
+            if (named is not null)
+            {
+                candidates.Add(new NetworkBinding(named.Name));
+            }
+        }
+
+        candidates.AddRange(adapters
+            .Where(adapter => !IsVirtual(adapter) && HasGateway(adapter))
+            .OrderByDescending(adapter => adapter.NetworkInterfaceType == NetworkInterfaceType.Ethernet)
+            .ThenByDescending(adapter => adapter.Speed)
+            .Select(adapter => new NetworkBinding(adapter.Name)));
+
+        return candidates.DistinctBy(binding => binding.InterfaceName, StringComparer.OrdinalIgnoreCase).ToList();
     }
+
+    private static NetworkInterface? Find(string name) => NetworkInterface.GetAllNetworkInterfaces()
+        .FirstOrDefault(adapter => Usable(adapter) && string.Equals(adapter.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Whether a socket bound to this adapter has anywhere to go. Only a routing-level refusal
+    /// counts against it: a refused or timed-out connection still proves the packet left, which
+    /// is all this asks. Nothing is sent — the handshake is abandoned either way.
+    /// </summary>
+    private static async Task<bool> CanRouteAsync(NetworkInterface adapter, CancellationToken cancellationToken)
+    {
+        var local = Addresses(adapter).FirstOrDefault();
+        if (local is null)
+        {
+            return false;
+        }
+
+        foreach (var target in ReachabilityTargets)
+        {
+            using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+
+            try
+            {
+                socket.Bind(new IPEndPoint(local, 0));
+
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(ReachabilityTimeout);
+
+                await socket.ConnectAsync(new IPEndPoint(target, 443), timeout.Token);
+                return true;
+            }
+            catch (SocketException exception) when (exception.SocketErrorCode is SocketError.NetworkUnreachable
+                                                        or SocketError.HostUnreachable
+                                                        or SocketError.AddressNotAvailable)
+            {
+                // The routing table has nothing for this destination on this adapter.
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // No answer in time, which still means the packet had somewhere to go.
+                return true;
+            }
+            catch (SocketException)
+            {
+                // Refused, reset, filtered: the adapter carried it.
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The adapter Windows would use for a public address right now.</summary>
+    private static NetworkAdapterInfo? DefaultRouteHolder()
+    {
+        try
+        {
+            // 1.1.1.1 in network order; the address is never contacted, only looked up.
+            if (GetBestInterface(0x01010101, out var index) != 0)
+            {
+                return null;
+            }
+
+            var adapter = NetworkInterface.GetAllNetworkInterfaces()
+                .FirstOrDefault(candidate => IndexOf(candidate) == index);
+
+            return adapter is null ? null : Describe(adapter);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException or NetworkInformationException)
+        {
+            return null;
+        }
+    }
+
+    private static int? IndexOf(NetworkInterface adapter)
+    {
+        try
+        {
+            return adapter.Supports(NetworkInterfaceComponent.IPv4) ? adapter.GetIPProperties().GetIPv4Properties().Index : null;
+        }
+        catch (NetworkInformationException)
+        {
+            return null;
+        }
+    }
+
+    [DllImport("iphlpapi.dll", ExactSpelling = true)]
+    private static extern int GetBestInterface(uint destinationAddress, out int interfaceIndex);
 
     private static bool Usable(NetworkInterface adapter) =>
         adapter.OperationalStatus == OperationalStatus.Up

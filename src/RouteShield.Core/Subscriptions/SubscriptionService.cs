@@ -14,7 +14,7 @@ namespace RouteShield.Subscriptions;
 public sealed class SubscriptionService : IDisposable
 {
     private const int MaxBytes = 5 * 1024 * 1024;
-    private const string UserAgent = "RouteShield/1.5.0 (sing-box)";
+    private const string UserAgent = "RouteShield/1.5.1 (sing-box)";
 
     private readonly Dictionary<string, HttpClient> _clients = [];
     private readonly object _gate = new();

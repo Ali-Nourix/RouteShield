@@ -169,7 +169,7 @@ public static class RuntimeConfigBuilder
                 ["level"] = "info",
                 ["timestamp"] = false
             },
-            ["dns"] = BuildDns(settings, carriesIpv6, binding),
+            ["dns"] = BuildDns(settings, carriesIpv6),
             ["inbounds"] = inbounds,
             ["outbounds"] = outbounds,
             ["route"] = BuildRoute(settings, rules, binding),
@@ -311,9 +311,13 @@ public static class RuntimeConfigBuilder
     private static int TunnelMtuFor(ConnectionTarget target) =>
         target.Tunnels.Select(tunnel => tunnel.LinkMtu ?? TunnelMtu).Append(TunnelMtu).Min();
 
-    private static JsonObject BuildDns(AppSettings settings, bool carriesIpv6, NetworkBinding? binding)
+    private static JsonObject BuildDns(AppSettings settings, bool carriesIpv6)
     {
-        var servers = new JsonArray(LocalResolver(binding));
+        var servers = new JsonArray(new JsonObject
+        {
+            ["type"] = "local",
+            ["tag"] = LocalResolverTag
+        });
 
         var dns = new JsonObject
         {
@@ -366,26 +370,6 @@ public static class RuntimeConfigBuilder
         servers.Add(fake);
         dns["rules"] = rules;
         return dns;
-    }
-
-    /// <summary>
-    /// The resolver that answers outside the tunnel. Bound to an adapter, it is that adapter's
-    /// own resolvers: the system list would include the ones belonging to a VPN we have just
-    /// stopped dialing through, and those are unreachable from here.
-    /// </summary>
-    private static JsonObject LocalResolver(NetworkBinding? binding)
-    {
-        if (binding is null || binding.DnsAddresses.Count == 0)
-        {
-            return new JsonObject { ["type"] = "local", ["tag"] = LocalResolverTag };
-        }
-
-        return new JsonObject
-        {
-            ["type"] = "udp",
-            ["tag"] = LocalResolverTag,
-            ["server"] = binding.DnsAddresses[0]
-        };
     }
 
     private static JsonArray BuildInbounds(AppSettings settings, int proxyPort, bool carriesIpv6, int mtu)

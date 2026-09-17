@@ -73,7 +73,7 @@ Options pass straight through:
 
 ```cmd
 build.cmd -Runtime win-arm64
-build.cmd -Version 1.5.0
+build.cmd -Version 1.5.1
 ```
 
 ## Layout
@@ -128,9 +128,11 @@ RouteShield builds one sing-box configuration per connection:
   minutes, uses the fastest, and switches when the chosen one fails or a member is faster by a
   clear margin; existing connections are left alone.
 - The core is told **which adapter to dial on** rather than asked to detect it. Detection
-  follows the default route, which is exactly what another VPN takes over; the bound adapter's
-  own resolvers come with it, because the system resolver list holds servers that only answer
-  through that other VPN. A network change moves the tunnel to the adapter that is up now.
+  follows the default route, which is exactly what another VPN takes over. The adapter is
+  checked first — a VPN in full-tunnel mode leaves no route behind it, and a socket bound to a
+  routeless adapter fails on every dial — and a network change moves the tunnel to the adapter
+  that is up now. Names are always answered by the system resolver: an ISP's own server refuses
+  the names the tunnel exists to reach.
 - A node that cannot carry IPv6, or that wraps each packet in a datagram, shapes the tunnel:
   no IPv6 addresses on the interface for the first, and no frame larger than the peer's MTU
   for the second.
