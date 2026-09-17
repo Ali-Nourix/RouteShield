@@ -83,6 +83,9 @@ public sealed class TunnelController : IAsyncDisposable
     /// <summary>The browser-facing proxies of the running core; empty while disconnected.</summary>
     public IReadOnlyList<BridgeBinding> Bridges { get; private set; } = [];
 
+    /// <summary>The core's own loopback proxy while the tunnel is up, for work that has to go through it.</summary>
+    public Uri? ProxyUri { get; private set; }
+
     public VpnProfile? ActiveProfile => _session?.Profile;
 
     /// <summary>The node an automatic group is carrying traffic over right now; null for a single node.</summary>
@@ -223,6 +226,7 @@ public sealed class TunnelController : IAsyncDisposable
         ConnectedAt = DateTimeOffset.Now;
         ReconnectAttempt = 0;
         Bridges = runtime.Bridges;
+        ProxyUri = runtime.ProxyUri;
         GroupSelection = runtime.IsAutomatic ? "choosing…" : null;
 
         foreach (var binding in runtime.Bridges)
@@ -475,6 +479,7 @@ public sealed class TunnelController : IAsyncDisposable
 
         ClearMeasurements();
         Bridges = [];
+        ProxyUri = null;
     }
 
     private void ClearMeasurements()

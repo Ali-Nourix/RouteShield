@@ -297,4 +297,13 @@ public sealed class AppSettings
     /// it whole. Off by default: it costs a little on every new connection.
     /// </summary>
     public bool TlsFragment { get; set; }
+
+    /// <summary>
+    /// Refuses QUIC from routed applications so browsers fall back to HTTP/2 over TCP. On by
+    /// default, and the single biggest difference to how a proxied browser feels.
+    /// </summary>
+    public bool BlockQuic { get; set; } = true;
+
+    /// <summary>Keeps Iranian sites on the local connection instead of sending them abroad and back.</summary>
+    public bool DirectDomesticSites { get; set; } = true;
 }

@@ -8,7 +8,7 @@ rem fetches a private copy into .tools\dotnet and leaves the rest of your machin
 rem
 rem Options are passed straight through, for example:
 rem   build.cmd -Runtime win-arm64
-rem   build.cmd -Version 1.3.0
+rem   build.cmd -Version 1.4.0
 
 echo.
 echo   RouteShield build

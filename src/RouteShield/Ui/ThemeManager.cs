@@ -1,6 +1,7 @@
 using System.IO;
 using System.Security;
 using System.Windows;
+using System.Windows.Media;
 using Microsoft.Win32;
 
 namespace RouteShield.Ui;
@@ -10,6 +11,13 @@ namespace RouteShield.Ui;
 /// is looked up dynamically, so replacing Palette.Light.xaml with Palette.Dark.xaml re-colours
 /// every open window in place. In System mode the choice follows the Windows app colour and
 /// changes with it.
+///
+/// A palette also decides how glyphs are rasterised. Subpixel antialiasing is tuned for dark
+/// text on paper: reversed out on a dark ground the same stem is covered only partly, and a
+/// regular weight reads as grey with coloured fringes however white the brush is. The dark
+/// palette therefore switches windows to hinted, greyscale rendering, which puts whole pixels
+/// into the stems. These are inherited attached properties, so setting them on the window is
+/// enough — no style may set them, or the style would outrank the inheritance.
 /// </summary>
 public static class ThemeManager
 {
@@ -20,6 +28,7 @@ public static class ThemeManager
     private static AppTheme _requested = AppTheme.System;
     private static bool? _applied;
     private static bool _listening;
+    private static bool _watchingWindows;
 
     /// <summary>Raised on the UI thread after the palette changed.</summary>
     public static event Action? Changed;
@@ -44,6 +53,30 @@ public static class ThemeManager
             SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
             _listening = true;
         }
+
+        if (!_watchingWindows)
+        {
+            // One class handler covers every window the app will ever open, including the
+            // dialogs, so none of them has to remember to ask for the current rendering.
+            EventManager.RegisterClassHandler(
+                typeof(Window),
+                FrameworkElement.LoadedEvent,
+                new RoutedEventHandler((sender, _) => ApplyTextRendering((Window)sender)));
+
+            _watchingWindows = true;
+        }
+    }
+
+    /// <summary>
+    /// Gives one window the glyph rendering the current palette asks for. On paper, ideal
+    /// metrics with subpixel antialiasing: the spacing the typeface was drawn for. On darkness,
+    /// hinted metrics so stems land on whole pixels, and greyscale antialiasing so a stem is
+    /// one solid pixel rather than three coloured thirds.
+    /// </summary>
+    public static void ApplyTextRendering(Window window)
+    {
+        TextOptions.SetTextFormattingMode(window, IsDark ? TextFormattingMode.Display : TextFormattingMode.Ideal);
+        TextOptions.SetTextRenderingMode(window, IsDark ? TextRenderingMode.Grayscale : TextRenderingMode.ClearType);
     }
 
     /// <summary>Whether Windows is set to dark for applications; false when the value cannot be read.</summary>
@@ -104,6 +137,12 @@ public static class ThemeManager
         }
 
         _applied = dark;
+
+        foreach (var window in application.Windows.OfType<Window>())
+        {
+            ApplyTextRendering(window);
+        }
+
         Changed?.Invoke();
     }
 }

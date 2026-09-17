@@ -448,6 +448,9 @@
 
     <Style x:Key="AppListBox" TargetType="ListBox">
         <Setter Property="Background" Value="Transparent" />
+        <!-- The framework's own ListBox style sets a system Foreground, and a theme setter beats
+             inheritance, so the rows would keep that colour rather than the palette's ink. -->
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
         <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
@@ -455,6 +458,7 @@
             <Setter.Value>
                 <Style TargetType="ListBoxItem">
                     <Setter Property="Cursor" Value="Hand" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                     <Setter Property="Template">
                         <Setter.Value>

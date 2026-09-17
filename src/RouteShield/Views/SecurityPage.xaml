@@ -67,6 +67,28 @@
                 </Border>
 
                 <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
+                    <CheckBox Style="{StaticResource SettingRow}" IsChecked="{Binding BlockQuic, Mode=TwoWay}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SettingName}" Text="Refuse QUIC so browsers use TCP" />
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,3,0,0" MaxWidth="720"
+                                       HorizontalAlignment="Left"
+                                       Text="QUIC carries video and large downloads over UDP, which no proxy handles as well as a TCP stream: the page loads and the video then stalls. Refusing it makes the browser fall back to HTTP/2 immediately. Recommended, and it only ever applies to the applications the policy routes." />
+                        </StackPanel>
+                    </CheckBox>
+                </Border>
+
+                <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
+                    <CheckBox Style="{StaticResource SettingRow}" IsChecked="{Binding DirectDomesticSites, Mode=TwoWay}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SettingName}" Text="Keep Iranian sites on your own connection" />
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,3,0,0" MaxWidth="720"
+                                       HorizontalAlignment="Left"
+                                       Text="Everything under .ir, and the large services on other domains — Digikala, Aparat, Zarinpal, Divar, the payment gateways — goes out locally instead of travelling abroad and back. Faster for those sites, and the ones that refuse foreign addresses keep working while the tunnel is up." />
+                        </StackPanel>
+                    </CheckBox>
+                </Border>
+
+                <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
                     <CheckBox Style="{StaticResource SettingRow}" IsChecked="{Binding TlsFragment, Mode=TwoWay}">
                         <StackPanel>
                             <TextBlock Style="{StaticResource SettingName}" Text="Fragment TLS handshakes to the server" />

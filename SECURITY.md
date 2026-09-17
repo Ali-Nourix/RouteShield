@@ -14,6 +14,12 @@
   name itself travels to the proxy, so a blocked or lying local resolver cannot redirect a
   routed application. Only the resolver used for dialing the proxy server itself stays on the
   physical adapter, because nothing can resolve through a tunnel that is not up yet.
+- **QUIC.** With the QUIC refusal on, routed applications cannot open UDP connections to ports
+  443 and 80; they fall back to TCP, which the tunnel carries properly. This is a reliability
+  measure, not a privacy one: nothing about it hides traffic that would otherwise be visible.
+- **Domestic routing.** With Iranian sites kept local, requests for `.ir` and the listed
+  services leave on your own connection and are visible to your network the way they were
+  before RouteShield. Turn it off if every request must go through the tunnel.
 - **Handshakes.** Optionally, every TLS handshake with the proxy server is fragmented across
   packets and TLS records so the server name is never in one packet. It hides nothing from an
   observer who reassembles the stream; it is a robustness measure against simple filters.

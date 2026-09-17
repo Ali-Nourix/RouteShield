@@ -39,6 +39,16 @@ place. *System* reads `AppsUseLightTheme` from the registry and follows
 `SystemEvents.UserPreferenceChanged`; the palette is chosen before the first window opens so a
 dark desktop never sees a light flash.
 
+### Rasterisation belongs to the palette
+
+Light text on a dark ground is drawn thinner than dark text on paper. Subpixel antialiasing
+spreads each stem across three coloured thirds and fills none of them, so a regular weight
+reads as grey with coloured fringes however white the brush is. `Ui/ThemeManager` therefore
+sets `TextOptions.TextFormattingMode` and `TextRenderingMode` on every window: ideal metrics
+with ClearType on paper, hinted metrics with greyscale antialiasing on darkness, which puts
+whole pixels into the stems. Both are inherited attached properties, so **no style may set
+them** — a style setter outranks inheritance and would pin every label to one palette's choice.
+
 ### Text colour is inherited
 
 The base text style sets no foreground. Text takes its colour from the window, card or control

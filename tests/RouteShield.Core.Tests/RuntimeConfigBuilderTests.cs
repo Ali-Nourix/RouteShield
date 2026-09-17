@@ -19,9 +19,21 @@ public class RuntimeConfigBuilderTests
         return JsonNode.Parse(runtime.Json)!.AsObject();
     }
 
-    private static JsonObject ProcessRuleOf(JsonObject root) => root["route"]!["rules"]!.AsArray()
+    private static JsonArray RulesOf(JsonObject root) => root["route"]!["rules"]!.AsArray();
+
+    /// <summary>The rule that routes the policy's executables; the QUIC rule names them too.</summary>
+    private static JsonObject ProcessRuleOf(JsonObject root) => RulesOf(root)
         .OfType<JsonObject>()
-        .Single(rule => rule.ContainsKey("process_path_regex"));
+        .Single(rule => rule.ContainsKey("process_path_regex") && rule["action"]?.GetValue<string>() == "route");
+
+    private static JsonObject? QuicRuleOf(JsonObject root) => RulesOf(root)
+        .OfType<JsonObject>()
+        .SingleOrDefault(rule => rule["action"]?.GetValue<string>() == "reject");
+
+    private static int IndexOf(JsonObject root, Func<JsonObject, bool> match) => RulesOf(root)
+        .Select((rule, index) => (Rule: (JsonObject)rule!, Index: index))
+        .First(entry => match(entry.Rule))
+        .Index;
 
     [Fact]
     public void Route_always_names_a_default_domain_resolver()
@@ -176,20 +188,24 @@ public class RuntimeConfigBuilderTests
     [Fact]
     public void Local_network_access_covers_addresses_and_local_names()
     {
+        static bool CoversLocalNames(JsonObject rule) =>
+            rule["domain_suffix"]?.AsArray().Any(suffix => suffix!.GetValue<string>() == ".local") == true;
+
         var withoutLan = Build(Fixtures.Settings(allowLan: false))["route"]!["rules"]!.AsArray();
         Assert.DoesNotContain(withoutLan, rule => rule!.AsObject().ContainsKey("ip_is_private"));
-        Assert.DoesNotContain(withoutLan, rule => rule!.AsObject().ContainsKey("domain_suffix"));
+        Assert.DoesNotContain(withoutLan, rule => CoversLocalNames(rule!.AsObject()));
 
         var withLan = Build(Fixtures.Settings(allowLan: true))["route"]!["rules"]!.AsArray().OfType<JsonObject>().ToList();
         var byAddress = withLan.Single(rule => rule.ContainsKey("ip_is_private"));
-        var byName = withLan.Single(rule => rule.ContainsKey("domain_suffix"));
+        var byName = withLan.Single(CoversLocalNames);
 
         Assert.Equal(RuntimeConfigBuilder.DirectTag, byAddress["outbound"]!.GetValue<string>());
         Assert.Equal(RuntimeConfigBuilder.DirectTag, byName["outbound"]!.GetValue<string>());
-        Assert.Contains(".local", byName["domain_suffix"]!.AsArray().Select(suffix => suffix!.GetValue<string>()));
 
         // Both must be decided before the process rule, or a routed application loses its printer.
-        var processIndex = withLan.FindIndex(rule => rule.ContainsKey("process_path_regex"));
+        var processIndex = withLan.FindIndex(rule =>
+            rule.ContainsKey("process_path_regex") && rule["action"]?.GetValue<string>() == "route");
+
         Assert.True(withLan.IndexOf(byAddress) < processIndex);
         Assert.True(withLan.IndexOf(byName) < processIndex);
     }
@@ -282,6 +298,85 @@ public class RuntimeConfigBuilderTests
 
         Assert.Throws<ArgumentException>(() =>
             RuntimeConfigBuilder.Build(parsed, Fixtures.Settings(), Fixtures.Apps, [BridgeRoute.Bypass()], FixedPorts));
+    }
+
+    [Fact]
+    public void Quic_is_refused_only_for_the_applications_the_policy_routes()
+    {
+        var rule = QuicRuleOf(Build(Fixtures.Settings()))!;
+
+        Assert.Equal("udp", rule["network"]!.GetValue<string>());
+        Assert.Equal([443, 80], rule["port"]!.AsArray().Select(port => port!.GetValue<int>()));
+        Assert.Equal("default", rule["method"]!.GetValue<string>());
+
+        // Scoped to the routed executables, so nothing outside the tunnel loses QUIC...
+        Assert.Equal(2, rule["process_path_regex"]!.AsArray().Count);
+
+        // ...and refused before the rule that would otherwise send it to the proxy.
+        var root = Build(Fixtures.Settings());
+        Assert.True(
+            IndexOf(root, candidate => candidate["action"]?.GetValue<string>() == "reject")
+            < IndexOf(root, candidate => candidate.ContainsKey("process_path_regex") && candidate["action"]?.GetValue<string>() == "route"));
+    }
+
+    [Fact]
+    public void Excluded_applications_keep_quic_on_their_own_connection()
+    {
+        var root = Build(Fixtures.Settings(RouteMode.AllExceptSelected));
+
+        // The rule that sends them out directly has to win over the refusal that follows it.
+        Assert.True(
+            IndexOf(root, candidate => candidate.ContainsKey("process_path_regex") && candidate["action"]?.GetValue<string>() == "route")
+            < IndexOf(root, candidate => candidate["action"]?.GetValue<string>() == "reject"));
+
+        Assert.Null(QuicRuleOf(root)!["process_path_regex"]);
+    }
+
+    [Fact]
+    public void A_full_tunnel_refuses_quic_everywhere()
+    {
+        var rule = QuicRuleOf(Build(Fixtures.Settings(RouteMode.FullTunnel), [], []))!;
+
+        Assert.Null(rule["process_path_regex"]);
+    }
+
+    [Fact]
+    public void Quic_can_be_left_alone()
+    {
+        var settings = Fixtures.Settings();
+        settings.BlockQuic = false;
+
+        Assert.Null(QuicRuleOf(Build(settings)));
+    }
+
+    [Fact]
+    public void Domestic_names_leave_on_the_local_connection_before_anything_else_claims_them()
+    {
+        var root = Build(Fixtures.Settings());
+        var domestic = RulesOf(root).OfType<JsonObject>()
+            .Single(rule => rule["domain_suffix"]?.AsArray().Any(suffix => suffix!.GetValue<string>() == ".ir") == true);
+
+        Assert.Equal(RuntimeConfigBuilder.DirectTag, domestic["outbound"]!.GetValue<string>());
+
+        var suffixes = domestic["domain_suffix"]!.AsArray().Select(suffix => suffix!.GetValue<string>()).ToArray();
+        Assert.Contains("digikala.com", suffixes);
+        Assert.Contains("zarinpal.com", suffixes);
+
+        // Before the refusal, so a domestic site is never denied QUIC it can actually use.
+        Assert.True(
+            IndexOf(root, candidate => candidate["domain_suffix"]?.AsArray().Any(suffix => suffix!.GetValue<string>() == ".ir") == true)
+            < IndexOf(root, candidate => candidate["action"]?.GetValue<string>() == "reject"));
+    }
+
+    [Fact]
+    public void Domestic_routing_can_be_turned_off()
+    {
+        var settings = Fixtures.Settings();
+        settings.DirectDomesticSites = false;
+
+        Assert.DoesNotContain(
+            RulesOf(Build(settings)).OfType<JsonObject>(),
+            rule => rule["domain_suffix"]?.AsArray().Any(suffix => suffix!.GetValue<string>() == ".ir") == true);
     }
 
     [Fact]

@@ -32,11 +32,15 @@
 
     <!-- ══ Type scale ══ -->
 
+    <!--
+        No colour and no text-rendering options here on purpose. Colour is inherited from the
+        control that holds the text, and how glyphs are rasterised is a property of the palette:
+        ThemeManager sets it on each window, and it inherits from there. A setter would win over
+        that inheritance and pin every label to the light theme's choice.
+    -->
     <Style x:Key="BaseText" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource BodyFont}" />
         <Setter Property="FontSize" Value="13.5" />
-        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
-        <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
     </Style>
 
     <Style TargetType="TextBlock" BasedOn="{StaticResource BaseText}" />

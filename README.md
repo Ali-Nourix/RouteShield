@@ -19,6 +19,10 @@ the tunnel; everything else keeps your own connection.
 - **Anti-DPI handshakes** — optionally fragment every TLS handshake with the proxy server
   across several packets and TLS records, for networks that read the server name from the
   first packet.
+- **QUIC refused for routed applications** — UDP through a proxy is what makes a tunnelled
+  browser load a page and then stall on the video; refusing it puts the browser back on TCP.
+- **Domestic traffic stays home** — `.ir` and the large Iranian services go out on your own
+  connection instead of abroad and back.
 - **Subscriptions** — HTTPS subscription URLs, plain or Base64, refreshed on demand and
   de-duplicated. URLs are sealed with DPAPI before they touch disk.
 - **Application kill switch** — while the tunnel is up, the routed executables are blocked from
@@ -67,7 +71,7 @@ Options pass straight through:
 
 ```cmd
 build.cmd -Runtime win-arm64
-build.cmd -Version 1.3.0
+build.cmd -Version 1.4.0
 ```
 
 ## Layout
@@ -121,6 +125,10 @@ RouteShield builds one sing-box configuration per connection:
   node of the subscription. The group tests each member against `generate_204` every three
   minutes, uses the fastest, and switches when the chosen one fails or a member is faster by a
   clear margin; existing connections are left alone.
+- Rules are decided in order: sniff, DNS hijack, the probe and bridge inbounds, private
+  addresses and local names, domestic names, the QUIC refusal, then the process policy. Each
+  one that matches ends the decision, so a domestic site is never denied QUIC it could have
+  used, and an excluded application keeps QUIC on its own connection.
 - With *Fragment TLS handshakes* on, every TCP-based node gets `tls.fragment` and
   `tls.record_fragment`; QUIC-based nodes (Hysteria2, TUIC) are left alone. Nodes without a
   declared fingerprint get uTLS with Chrome's profile on TCP, WebSocket and HTTPUpgrade.

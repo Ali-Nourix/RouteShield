@@ -40,6 +40,9 @@ public static class RuntimeConfigBuilder
     public const string GroupIdleTimeout = "30m";
     public const int GroupToleranceMilliseconds = 50;
 
+    /// <summary>The ports a browser speaks QUIC on; HTTP/3 is always one of these.</summary>
+    private static readonly int[] QuicPorts = [443, 80];
+
     /// <summary>Protocols that run over QUIC, where a TCP-level TLS fragment has nothing to split.</summary>
     private static readonly HashSet<string> QuicProtocols = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -49,6 +52,27 @@ public static class RuntimeConfigBuilder
     /// <summary>Names that only ever mean something on the local network.</summary>
     private static readonly string[] LocalNameSuffixes =
         [".local", ".lan", ".home", ".internal", ".home.arpa", ".localdomain"];
+
+    /// <summary>
+    /// Sites served from inside Iran. Sending them abroad and back costs a round trip for
+    /// nothing, and many of them refuse foreign addresses outright — banks and government
+    /// services in particular. The .ir zone covers most of it; these are the large services
+    /// that sit on a generic TLD. Matching is by name, which is what the connection carries
+    /// once secure DNS is answering, so no address list is needed.
+    /// </summary>
+    private static readonly string[] DomesticNameSuffixes =
+    [
+        ".ir",
+        "digikala.com", "digikalajet.com", "basalam.com", "torob.com", "emalls.ir", "sheypoor.com",
+        "aparat.com", "filimo.com", "telewebion.com", "namava.com", "tamashakhoneh.ir",
+        "varzesh3.com", "zoomit.ir", "mehrnews.com", "irna.ir", "yjc.ir", "khabaronline.ir",
+        "alibaba.ir", "snapptrip.com", "flytoday.ir", "eligasht.com", "tapsi.ir",
+        "zarinpal.com", "behpardakht.com", "shaparak.ir", "sadad.ir",
+        "arvancloud.com", "arvancloud.ir", "parspack.com", "iranserver.com", "abrarvan.com",
+        "blogfa.com", "virgool.io", "quera.org", "sokanacademy.com",
+        "cafebazaar.ir", "myket.ir", "divar.ir", "balad.ir", "neshan.org",
+        "eitaa.com", "rubika.ir", "splus.ir", "igap.net"
+    ];
 
     private static readonly JsonSerializerOptions WriteOptions =
         new(JsonSerializerOptions.Default) { WriteIndented = true };
@@ -389,16 +413,80 @@ public static class RuntimeConfigBuilder
             });
         }
 
+        // Domestic names leave before anything else can claim them, so they keep their own
+        // route whatever the policy is and whether or not QUIC is being refused.
+        if (settings.DirectDomesticSites)
+        {
+            rules.Add(new JsonObject
+            {
+                ["domain_suffix"] = TunnelParser.ToJsonArray(DomesticNameSuffixes),
+                ["action"] = "route",
+                ["outbound"] = DirectTag
+            });
+        }
+
         switch (settings.RouteMode)
         {
             case RouteMode.SelectedAppsOnly:
+                // Refused before the rule that would route it, and only for the applications in
+                // the policy: nothing outside the tunnel loses QUIC.
+                if (settings.BlockQuic)
+                {
+                    rules.Add(QuicRejectRule(executables));
+                }
+
                 rules.Add(ProcessRule(executables, ProxyTag));
                 break;
 
             case RouteMode.AllExceptSelected:
+                // The excluded applications leave first, so they keep QUIC on the open connection.
                 rules.Add(ProcessRule(executables, DirectTag));
+
+                if (settings.BlockQuic)
+                {
+                    rules.Add(QuicRejectRule([]));
+                }
+
+                break;
+
+            default:
+                if (settings.BlockQuic)
+                {
+                    rules.Add(QuicRejectRule([]));
+                }
+
                 break;
         }
+    }
+
+    /// <summary>
+    /// Refuses QUIC so a browser falls back to HTTP/2 over TCP.
+    ///
+    /// QUIC is UDP, and UDP through a proxy is a second-class citizen: every packet is wrapped,
+    /// there is no congestion control shared with the tunnel underneath, and loss on the path to
+    /// the server is not recovered the way a TCP stream's is. A browser that reaches YouTube over
+    /// QUIC through a tunnel usually loads the page and then stalls on the video, because the
+    /// media stream is the part that needs sustained throughput. Refused with an ICMP
+    /// unreachable rather than dropped, so the browser gives up on QUIC immediately instead of
+    /// waiting out a timeout on every connection.
+    /// </summary>
+    private static JsonObject QuicRejectRule(IEnumerable<string> executables)
+    {
+        var rule = new JsonObject
+        {
+            ["network"] = "udp",
+            ["port"] = new JsonArray(QuicPorts.Select(port => (JsonNode)JsonValue.Create(port)).ToArray()),
+            ["action"] = "reject",
+            ["method"] = "default"
+        };
+
+        var paths = executables.ToArray();
+        if (paths.Length > 0)
+        {
+            rule["process_path_regex"] = ExecutableRegexes(paths);
+        }
+
+        return rule;
     }
 
     private static JsonObject BuildExperimental(AppSettings settings, PortPlan ports)
@@ -434,10 +522,13 @@ public static class RuntimeConfigBuilder
     /// </summary>
     private static JsonObject ProcessRule(IEnumerable<string> executables, string outbound) => new()
     {
-        ["process_path_regex"] = TunnelParser.ToJsonArray(executables.Select(path => $"(?i)^{EscapeRegex(path)}$")),
+        ["process_path_regex"] = ExecutableRegexes(executables),
         ["action"] = "route",
         ["outbound"] = outbound
     };
+
+    private static JsonArray ExecutableRegexes(IEnumerable<string> executables) =>
+        TunnelParser.ToJsonArray(executables.Select(path => $"(?i)^{EscapeRegex(path)}$"));
 
     /// <summary>
     /// Escapes the metacharacters of RE2, the engine the core uses. The framework's own

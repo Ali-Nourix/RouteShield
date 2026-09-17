@@ -4,6 +4,12 @@
     that was "muted on paper" is now "muted on darkness" at the same distance from the
     ground. The accent lifts one step so red text and the connect button keep their
     contrast; ink-card roles invert with the card.
+
+    Light text on a dark ground is rasterised thinner than dark text on paper: antialiasing
+    covers only part of each stem, so a regular weight reads as grey however white its colour.
+    Two things answer that here. Text is pure white rather than near-white, and ThemeManager
+    switches the window to hinted, greyscale glyph rendering for this palette, which fills the
+    stems instead of spreading them over three subpixels. Secondary steps are lifted to match.
 -->
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -12,7 +18,7 @@
     <!-- Ground -->
     <Color x:Key="BgColor">#151413</Color>
     <Color x:Key="SurfaceColor">#1E1C1B</Color>
-    <Color x:Key="TextColor">#F3F2F2</Color>
+    <Color x:Key="TextColor">#FFFFFF</Color>
     <Color x:Key="AccentColor">#FF563C</Color>
     <Color x:Key="Accent2Color">#E15B47</Color>
 
@@ -21,10 +27,10 @@
     <Color x:Key="Neutral200Color">#302E2D</Color>
     <Color x:Key="Neutral300Color">#3D3A39</Color>
     <Color x:Key="Neutral400Color">#4F4C4B</Color>
-    <Color x:Key="Neutral500Color">#726E6D</Color>
-    <Color x:Key="Neutral600Color">#938F8E</Color>
-    <Color x:Key="Neutral700Color">#AFABAA</Color>
-    <Color x:Key="Neutral800Color">#CBC7C6</Color>
+    <Color x:Key="Neutral500Color">#807C7B</Color>
+    <Color x:Key="Neutral600Color">#A5A1A0</Color>
+    <Color x:Key="Neutral700Color">#C6C2C1</Color>
+    <Color x:Key="Neutral800Color">#DCD8D7</Color>
     <Color x:Key="Neutral900Color">#E6E3E2</Color>
 
     <!-- Accent ramp, unchanged in value; the semantic roles below pick different steps -->
@@ -64,7 +70,7 @@
     <SolidColorBrush x:Key="AccentDeepBrush" Color="#FF6E57" />
     <SolidColorBrush x:Key="AccentDeeperBrush" Color="#FF8570" />
 
-    <SolidColorBrush x:Key="DividerBrush" Color="{StaticResource TextColor}" Opacity="0.14" />
+    <SolidColorBrush x:Key="DividerBrush" Color="{StaticResource TextColor}" Opacity="0.13" />
     <SolidColorBrush x:Key="HoverBrush" Color="{StaticResource TextColor}" Opacity="0.08" />
     <SolidColorBrush x:Key="PressedBrush" Color="{StaticResource TextColor}" Opacity="0.15" />
     <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentColor}" Opacity="0.14" />

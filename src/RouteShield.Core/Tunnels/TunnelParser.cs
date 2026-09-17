@@ -147,7 +147,10 @@ public static class TunnelParser
             ["server_port"] = port,
             ["uuid"] = id,
             ["security"] = ReadString(source, "scy") ?? "auto",
-            ["alter_id"] = ReadInt(source, "aid") ?? 0
+            ["alter_id"] = ReadInt(source, "aid") ?? 0,
+            // As for VLESS: without xudp, UDP inside the tunnel falls back to one connection
+            // per destination, which games and QUIC both suffer for.
+            ["packet_encoding"] = "xudp"
         };
 
         var query = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)

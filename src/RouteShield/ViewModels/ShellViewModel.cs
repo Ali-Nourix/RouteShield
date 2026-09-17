@@ -319,6 +319,18 @@ public sealed class ShellViewModel : Observable
         set => ApplySetting(settings => settings.TlsFragment = value, _settings.TlsFragment == value);
     }
 
+    public bool BlockQuic
+    {
+        get => _settings.BlockQuic;
+        set => ApplySetting(settings => settings.BlockQuic = value, _settings.BlockQuic == value);
+    }
+
+    public bool DirectDomesticSites
+    {
+        get => _settings.DirectDomesticSites;
+        set => ApplySetting(settings => settings.DirectDomesticSites = value, _settings.DirectDomesticSites == value);
+    }
+
     public AppTheme Theme
     {
         get => _settings.Theme;
@@ -1024,7 +1036,9 @@ public sealed class ShellViewModel : Observable
     {
         try
         {
-            var entries = await _subscriptions.FetchAsync(subscription.Url);
+            // The address a subscription lives at is often blocked by the network the tunnel is
+            // there to get around, so it is fetched through the tunnel whenever one is up.
+            var entries = await _subscriptions.FetchAsync(subscription.Url, _tunnel.ProxyUri);
             var replaced = ReplaceSubscriptionProfiles(subscription, entries);
 
             subscription.LastError = string.Empty;
@@ -1412,6 +1426,8 @@ public sealed class ShellViewModel : Observable
         _settings.AutoConnect = defaults.AutoConnect;
         _settings.CloseToTray = defaults.CloseToTray;
         _settings.TlsFragment = defaults.TlsFragment;
+        _settings.BlockQuic = defaults.BlockQuic;
+        _settings.DirectDomesticSites = defaults.DirectDomesticSites;
         BrowserBridgeEnabled = defaults.BrowserBridgeEnabled;
         Theme = defaults.Theme;
 
@@ -1544,7 +1560,7 @@ public sealed class ShellViewModel : Observable
                      nameof(RouteMode), nameof(RouteModeText), nameof(AppKillSwitch), nameof(DnsProtection),
                      nameof(Ipv6Protection), nameof(AllowLan), nameof(AutoReconnect), nameof(AutoConnect),
                      nameof(CloseToTray), nameof(StartWithWindows), nameof(BrowserBridgeEnabled), nameof(BridgeSummary),
-                     nameof(TlsFragment), nameof(Theme),
+                     nameof(TlsFragment), nameof(BlockQuic), nameof(DirectDomesticSites), nameof(Theme),
                      nameof(ShowFirstRun), nameof(AppSummary), nameof(StateWord), nameof(StatusDetail)
                  })
         {

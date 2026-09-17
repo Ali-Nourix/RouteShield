@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.4.0
+
+### Fixed
+
+- **Text was hard to read in dark mode.** Light glyphs on a dark ground are rasterised thinner
+  than dark glyphs on paper: subpixel antialiasing spreads each stem over three coloured thirds
+  and covers none of them fully, so a regular weight read as grey with coloured fringes however
+  white its colour was. Dark mode now draws text with hinted metrics and greyscale antialiasing,
+  which puts whole pixels into the stems, and the palette's text and secondary steps are brighter.
+  Glyph rendering belongs to the palette now rather than to the text style, so it changes with the
+  theme instead of staying pinned to the light one.
+- **List rows could ignore the palette.** The framework's own `ListBox` style sets a foreground,
+  and a theme setter outranks inheritance, so rows kept a system colour rather than the palette's.
+
+### Added
+
+- **QUIC is refused for routed applications** (on by default). QUIC is UDP, and UDP through a
+  proxy has no shared congestion control with the tunnel underneath, so a browser loads a page
+  over it and then stalls on the video. Refusing it — with an ICMP unreachable, so the browser
+  gives up at once instead of waiting out a timeout — makes it fall back to HTTP/2 over TCP.
+  This is what Clash and Hiddify configurations do, and it is the single biggest difference to
+  how a proxied browser feels. Only the applications the policy routes are affected; excluded
+  applications keep QUIC on their own connection.
+- **Iranian sites stay on the local connection** (on by default). Everything under `.ir`, and
+  the large services on other domains — Digikala, Aparat, Zarinpal, Divar, the payment gateways,
+  ArvanCloud — is routed directly instead of travelling abroad and back. Matching is by name,
+  which is what a connection carries once secure DNS is answering, so no address list is needed.
+- **Subscriptions are fetched through the tunnel** when one is up. The address a subscription
+  lives at is usually blocked by the same network the tunnel exists to get around, which is why
+  a refresh failed with a connection timeout. The request now carries a user agent naming
+  sing-box, so providers serve the document this app can read, and accepts compressed responses.
+
+### Changed
+
+- VMess carries UDP as `xudp`, as VLESS already did.
+
 ## 1.3.0
 
 ### Fixed

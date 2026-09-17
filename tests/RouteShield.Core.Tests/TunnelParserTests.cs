@@ -164,6 +164,17 @@ public class TunnelParserTests
     }
 
     [Fact]
+    public void Vmess_carries_udp_as_xudp()
+    {
+        var payload = """
+            {"v":"2","ps":"Berlin","add":"ber.example.net","port":"443","id":"b1f0e4c2-0000-4000-8000-000000009ac4","aid":"0"}
+            """;
+        var parsed = TunnelParser.Parse("vmess://" + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(payload)));
+
+        Assert.Equal("xudp", parsed.Outbound!["packet_encoding"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void WireGuard_conf_becomes_an_endpoint()
     {
         var parsed = TunnelParser.Parse(Fixtures.WireGuardConf);

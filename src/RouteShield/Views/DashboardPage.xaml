@@ -303,6 +303,8 @@
                 <views:StateRow Label="IPv6 strict routing" IsOn="{Binding Ipv6Protection}" />
                 <views:StateRow Label="Application kill switch" Emphasise="True" OnLabel="ARMED"
                                 IsOn="{Binding AppKillSwitch}" />
+                <views:StateRow Label="QUIC refused for routed apps" IsOn="{Binding BlockQuic}" />
+                <views:StateRow Label="Iranian sites stay local" IsOn="{Binding DirectDomesticSites}" />
                 <views:StateRow Label="Local network access" IsOn="{Binding AllowLan}" />
                 <views:StateRow Label="Browser bridge for the extension" IsOn="{Binding BrowserBridgeEnabled}" />
             </StackPanel>
