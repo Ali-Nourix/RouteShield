@@ -25,3 +25,11 @@ The Regular, SemiBold and ExtraBold instances are redistributed unmodified in
 
 Microsoft and third-party licences apply to the self-contained runtime components shipped inside
 the published executable.
+
+## WireSock (not redistributed)
+
+- https://www.wiresock.net
+- Proprietary; free for personal use under its own terms.
+
+RouteShield does not ship WireSock or its driver. When it is already installed — by its own
+installer or by TunnlTo — RouteShield runs that copy's `wiresock-client.exe` for WireGuard profiles.

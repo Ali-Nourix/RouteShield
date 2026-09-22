@@ -31,6 +31,22 @@ public enum OutboundBinding
     Fixed
 }
 
+/// <summary>Which program carries the tunnel.</summary>
+public enum TunnelEngine
+{
+    /// <summary>
+    /// sing-box, except for a WireGuard profile that needs WireSock: an AmneziaWG profile, or
+    /// any WireGuard profile while another VPN holds the default route.
+    /// </summary>
+    Automatic,
+
+    /// <summary>sing-box for everything: every protocol, the browser bridge, secure DNS.</summary>
+    SingBox,
+
+    /// <summary>WireSock for WireGuard profiles; other profiles still use sing-box.</summary>
+    WireSock
+}
+
 /// <summary>Which palette the window draws with; System follows the Windows app colour.</summary>
 public enum AppTheme
 {
@@ -328,6 +344,8 @@ public sealed class AppSettings
     public bool DirectDomesticSites { get; set; } = true;
 
     public OutboundBinding OutboundBinding { get; set; } = OutboundBinding.AvoidOtherVpns;
+
+    public TunnelEngine Engine { get; set; } = TunnelEngine.Automatic;
 
     /// <summary>The adapter name used when <see cref="OutboundBinding"/> is Fixed; the Windows connection name.</summary>
     public string OutboundAdapter { get; set; } = string.Empty;

@@ -12,6 +12,9 @@ public static class TunnelParser
     /// <summary>What sing-box gives a WireGuard peer that does not name an MTU.</summary>
     public const int DefaultWireGuardMtu = 1408;
 
+    /// <summary>[Interface] keys that only AmneziaWG (and WireSock, which speaks it) understand.</summary>
+    private static readonly string[] AmneziaKeys = ["Jc", "Jmin", "Jmax", "S1", "S2", "H1", "H2", "H3", "H4"];
+
     /// <summary>Outbound types RouteShield can lift out of a pasted sing-box configuration.</summary>
     private static readonly HashSet<string> SupportedJsonOutbounds = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -473,14 +476,24 @@ public static class TunnelParser
             endpoint["mtu"] = mtu;
         }
 
+        var amnezia = AmneziaKeys.Any(key => Optional(iface.Values, key).Length > 0);
+
         var parsed = new ParsedTunnel
         {
-            FormatName = "WireGuard",
+            FormatName = amnezia ? "AmneziaWG" : "WireGuard",
             DisplayName = "WireGuard",
             Endpoint = endpoint,
             CarriesIpv6 = addresses.Any(address => address.Contains(':')),
-            LinkMtu = mtu > 0 ? mtu : DefaultWireGuardMtu
+            LinkMtu = mtu > 0 ? mtu : DefaultWireGuardMtu,
+            WireGuardConf = text,
+            IsAmneziaWg = amnezia
         };
+
+        if (amnezia)
+        {
+            parsed.Warnings.Add(
+                "This profile uses AmneziaWG obfuscation, which the sing-box core cannot speak; it would connect as plain WireGuard. Use the WireSock engine for it.");
+        }
 
         var carriesDefaultRoute = peers.Any(peer =>
             SplitCsv(Optional(peer.Values, "AllowedIPs")).Any(range => range is "0.0.0.0/0" or "::/0"));

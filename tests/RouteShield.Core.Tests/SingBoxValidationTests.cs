@@ -128,6 +128,24 @@ public class SingBoxValidationTests
     }
 
     [SkippableFact]
+    public void A_wireguard_configuration_sized_for_another_vpn_is_accepted_by_the_core()
+    {
+        var core = CorePath;
+        Skip.If(core is null, "Set ROUTESHIELD_SINGBOX to a sing-box executable to run core validation.");
+
+        var runtime = RuntimeConfigBuilder.Build(
+            ConnectionTarget.Single(TunnelParser.Parse(Fixtures.AmneziaWg)),
+            Fixtures.Settings(),
+            Fixtures.Apps,
+            [],
+            new PortPlan(21080, 29090, "s3cret", []),
+            null,
+            underlayMtu: 1300);
+
+        AssertAccepted(core!, runtime.Json);
+    }
+
+    [SkippableFact]
     public void A_wireguard_only_configuration_is_accepted_by_the_core()
     {
         var core = CorePath;

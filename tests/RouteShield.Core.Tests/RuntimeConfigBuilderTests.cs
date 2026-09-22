@@ -403,6 +403,61 @@ public class RuntimeConfigBuilderTests
     }
 
     [Fact]
+    public void Wireguard_inside_another_vpn_is_sized_to_fit_the_adapter_carrying_it()
+    {
+        // Cisco's adapter at 1300: a peer sized for 1500 produced datagrams the socket refused.
+        var runtime = RuntimeConfigBuilder.Build(
+            ConnectionTarget.Single(TunnelParser.Parse(Fixtures.WireGuardConf)),
+            Fixtures.Settings(), Fixtures.Apps, [], FixedPorts, null, underlayMtu: 1300);
+
+        var root = JsonNode.Parse(runtime.Json)!.AsObject();
+        var endpointMtu = root["endpoints"]!.AsArray().Single()!["mtu"]!.GetValue<int>();
+        var tunMtu = root["inbounds"]!.AsArray().OfType<JsonObject>()
+            .Single(inbound => inbound["type"]!.GetValue<string>() == "tun")["mtu"]!.GetValue<int>();
+
+        Assert.Equal(1280, endpointMtu);
+        Assert.Equal(1280, tunMtu);
+    }
+
+    [Fact]
+    public void A_roomier_underlay_only_trims_what_does_not_fit()
+    {
+        var runtime = RuntimeConfigBuilder.Build(
+            ConnectionTarget.Single(TunnelParser.Parse(Fixtures.WireGuardConf)),
+            Fixtures.Settings(), Fixtures.Apps, [], FixedPorts, null, underlayMtu: 1406);
+
+        var endpointMtu = JsonNode.Parse(runtime.Json)!["endpoints"]!.AsArray().Single()!["mtu"]!.GetValue<int>();
+
+        Assert.Equal(1406 - 80, endpointMtu);
+    }
+
+    [Theory]
+    [InlineData(1500)]
+    [InlineData(null)]
+    public void A_plain_link_leaves_the_peer_as_declared(int? underlay)
+    {
+        var runtime = RuntimeConfigBuilder.Build(
+            ConnectionTarget.Single(TunnelParser.Parse(Fixtures.WireGuardConf)),
+            Fixtures.Settings(), Fixtures.Apps, [], FixedPorts, null, underlay);
+
+        Assert.Equal(1420, JsonNode.Parse(runtime.Json)!["endpoints"]!.AsArray().Single()!["mtu"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public void A_tcp_proxy_keeps_the_large_frame_inside_another_vpn()
+    {
+        // A stream-based proxy re-segments everything; the interface size is not its problem.
+        var runtime = RuntimeConfigBuilder.Build(
+            ConnectionTarget.Single(TunnelParser.Parse(Fixtures.VlessReality)),
+            Fixtures.Settings(), Fixtures.Apps, [], FixedPorts, null, underlayMtu: 1300);
+
+        var tunMtu = JsonNode.Parse(runtime.Json)!["inbounds"]!.AsArray().OfType<JsonObject>()
+            .Single(inbound => inbound["type"]!.GetValue<string>() == "tun")["mtu"]!.GetValue<int>();
+
+        Assert.Equal(9000, tunMtu);
+    }
+
+    [Fact]
     public void Quic_is_refused_only_for_the_applications_the_policy_routes()
     {
         var rule = QuicRuleOf(Build(Fixtures.Settings()))!;

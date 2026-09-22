@@ -31,6 +31,7 @@ public sealed class TunnelController : IAsyncDisposable
     private static readonly TimeSpan RebindSettleDelay = TimeSpan.FromSeconds(4);
 
     private readonly CoreProcessService _core = new();
+    private readonly WireSockEngine _wireSock = new();
     private readonly FirewallService _firewall = new();
     private readonly NetworkProbe _probe = new();
     private readonly TrafficMeter _traffic = new();
@@ -50,6 +51,8 @@ public sealed class TunnelController : IAsyncDisposable
     {
         _core.OutputReceived += line => AppLog.Write(LogCategory.Core, line);
         _core.Exited += OnCoreExited;
+        _wireSock.OutputReceived += line => AppLog.Write(LogCategory.Core, $"[wiresock] {line}");
+        _wireSock.Exited += OnCoreExited;
         NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
         _traffic.SampleReceived += sample =>
         {
@@ -98,6 +101,12 @@ public sealed class TunnelController : IAsyncDisposable
 
     /// <summary>Why the adapter is not the one that was asked for; null when the choice held.</summary>
     public string? BindingWarning { get; private set; }
+
+    /// <summary>The program carrying the tunnel right now: "sing-box" or "WireSock".</summary>
+    public string? ActiveEngine { get; private set; }
+
+    /// <summary>Why the engine is the one it is, when that was not the obvious choice.</summary>
+    public string? EngineNote { get; private set; }
 
     public VpnProfile? ActiveProfile => _session?.Profile;
 
@@ -213,16 +222,87 @@ public sealed class TunnelController : IAsyncDisposable
         Report(TunnelState.Disconnected, "Traffic is on your local adapter");
     }
 
+    private sealed record EngineDecision(bool UseWireSock, string? Note, bool IsWarning);
+
+    /// <summary>
+    /// Picks the program for this session. sing-box carries everything and is the default;
+    /// WireSock is chosen for a WireGuard profile when it is the only thing that can work — a
+    /// corporate VPN holding the default route, which WireSock works underneath — or when the
+    /// profile is AmneziaWG, which sing-box cannot speak.
+    /// </summary>
+    private static EngineDecision ChooseEngine(TunnelSession session)
+    {
+        var settings = session.Settings;
+        var tunnel = session.Target.IsAutomatic ? null : session.Target.Tunnels[0];
+        var isWireGuardConf = tunnel?.WireGuardConf is not null;
+
+        if (settings.Engine == TunnelEngine.SingBox)
+        {
+            return tunnel?.IsAmneziaWg == true
+                ? new EngineDecision(false, "This AmneziaWG profile runs as plain WireGuard on sing-box, which a DPI filter may block. The WireSock engine speaks it.", true)
+                : new EngineDecision(false, null, false);
+        }
+
+        if (!isWireGuardConf)
+        {
+            return settings.Engine == TunnelEngine.WireSock
+                ? new EngineDecision(false, "WireSock carries WireGuard profiles only, so this profile runs on sing-box.", true)
+                : new EngineDecision(false, null, false);
+        }
+
+        var otherVpn = NetworkAdapters.OtherVpnHoldingDefaultRoute();
+        var wanted = settings.Engine == TunnelEngine.WireSock || tunnel!.IsAmneziaWg || otherVpn is not null;
+
+        if (!WireSockEngine.IsInstalled)
+        {
+            return wanted
+                ? new EngineDecision(
+                    false,
+                    (otherVpn is null ? string.Empty : $"\"{otherVpn.Name}\" ({otherVpn.Description}) holds the default route. ") +
+                    "WireSock would carry this WireGuard profile underneath it, but it is not installed — install WireSock Secure Connect (TunnlTo installs it too).",
+                    true)
+                : new EngineDecision(false, null, false);
+        }
+
+        if (settings.Engine == TunnelEngine.WireSock)
+        {
+            return new EngineDecision(true, null, false);
+        }
+
+        if (tunnel!.IsAmneziaWg)
+        {
+            return new EngineDecision(true, "AmneziaWG profile — running on WireSock, which speaks its obfuscation.", false);
+        }
+
+        return otherVpn is not null
+            ? new EngineDecision(true, $"\"{otherVpn.Name}\" ({otherVpn.Description}) holds the default route, so this profile runs on WireSock, underneath it.", false)
+            : new EngineDecision(false, null, false);
+    }
+
     private async Task StartAsync(TunnelSession session)
     {
+        var engine = ChooseEngine(session);
+        EngineNote = engine.IsWarning ? null : engine.Note;
+        BindingWarning = engine.IsWarning ? engine.Note : null;
+
+        if (engine.UseWireSock)
+        {
+            await StartWireSockAsync(session);
+            return;
+        }
+
         Report(TunnelState.Connecting, "Starting sing-box and attaching the TUN adapter");
 
         // Verified before the core starts: an adapter the operating system cannot route on
         // would fail every dial, and the reason would only show up as a timeout much later.
         var choice = await NetworkAdapters.ResolveAsync(session.Settings);
-        BindingWarning = choice.Warning;
+        BindingWarning = string.Join(" ", new[] { BindingWarning, choice.Warning }.Where(text => text is not null)) is { Length: > 0 } joined
+            ? joined
+            : null;
 
-        var runtime = BuildRuntime(session.Target, session.Settings, session.Apps, BridgeRoutesFor(session), choice.Binding);
+        var runtime = BuildRuntime(
+            session.Target, session.Settings, session.Apps, BridgeRoutesFor(session), choice.Binding,
+            NetworkAdapters.CarryingMtu(choice.Binding));
 
         AppPaths.Ensure();
         await File.WriteAllTextAsync(AppPaths.RuntimeConfig, runtime.Json, new UTF8Encoding(false));
@@ -259,8 +339,56 @@ public sealed class TunnelController : IAsyncDisposable
             AppLog.Write(LogCategory.Network, $"Browser bridge: {runtime.Bridges.Count} route(s) on loopback");
         }
 
+        ActiveEngine = "sing-box";
         _traffic.Start(runtime.ControlUri, runtime.ControlSecret);
-        StartProbing(runtime);
+        StartProbing(runtime.ProxyUri, runtime);
+    }
+
+    /// <summary>
+    /// Hands a WireGuard profile to WireSock. Nothing of sing-box runs: no TUN adapter, no
+    /// routes, so no browser bridge and no secure DNS either — WireSock resolves with the
+    /// profile's own DNS line. The firewall kill switch stays off, because its rules would stop
+    /// the applications before their packets ever reached WireSock underneath.
+    /// </summary>
+    private async Task StartWireSockAsync(TunnelSession session)
+    {
+        Report(TunnelState.Connecting, "Starting WireSock underneath the routing table");
+
+        var tunnel = session.Target.Tunnels[0];
+        var conf = WireSockConfig.Build(tunnel.WireGuardConf!, session.Settings, session.Apps, Environment.ProcessPath);
+
+        AppPaths.Ensure();
+        await File.WriteAllTextAsync(AppPaths.WireSockConfig, conf, new UTF8Encoding(false));
+        await _wireSock.StartAsync(AppPaths.WireSockConfig);
+
+        // Rules left armed by a sing-box run this session moved away from would now block the
+        // very applications WireSock is about to carry.
+        if (KillSwitchArmed)
+        {
+            await _firewall.RemoveAsync();
+            KillSwitchArmed = false;
+        }
+
+        if (session.Settings.AppKillSwitch && session.Settings.RouteMode == RouteMode.SelectedAppsOnly)
+        {
+            AppLog.Write(
+                LogCategory.Firewall,
+                "The kill switch is not armed under WireSock: its firewall rules would block the applications before WireSock could carry them.");
+        }
+
+        _boundInterface = null;
+        ConnectedAt = DateTimeOffset.Now;
+        ReconnectAttempt = 0;
+        Bridges = [];
+        ProxyUri = null;
+        GroupSelection = null;
+        ActiveEngine = "WireSock";
+
+        AppLog.Write(LogCategory.Network, EngineNote ?? "Running on WireSock.");
+        Report(TunnelState.Connected, DescribeRoute(session.Settings, session.Apps.Count) + " · WireSock");
+
+        // RouteShield itself is one of the tunnelled applications, so the probe needs no proxy.
+        StartProbing(null, null);
     }
 
     /// <summary>
@@ -292,12 +420,14 @@ public sealed class TunnelController : IAsyncDisposable
         return routes;
     }
 
-    private void StartProbing(RuntimeConfig runtime)
+    /// <param name="proxy">Where the probe sends its request; null when RouteShield's own traffic is already tunnelled.</param>
+    /// <param name="runtime">The sing-box run, when there is one, for reading an automatic group's choice.</param>
+    private void StartProbing(Uri? proxy, RuntimeConfig? runtime)
     {
         StopProbing();
         var cancellation = new CancellationTokenSource();
         _probing = cancellation;
-        _ = ProbeLoopAsync(runtime, cancellation.Token);
+        _ = ProbeLoopAsync(proxy, runtime, cancellation.Token);
     }
 
     private void StopProbing()
@@ -312,13 +442,13 @@ public sealed class TunnelController : IAsyncDisposable
     /// slow first TLS connection can outlast the first attempt — and then keeps the latency
     /// figure fresh for as long as the tunnel is up.
     /// </summary>
-    private async Task ProbeLoopAsync(RuntimeConfig runtime, CancellationToken cancellationToken)
+    private async Task ProbeLoopAsync(Uri? proxy, RuntimeConfig? runtime, CancellationToken cancellationToken)
     {
         try
         {
             for (var attempt = 1; attempt <= ProbeAttempts; attempt++)
             {
-                if (await MeasureOnceAsync(runtime, cancellationToken) || attempt == ProbeAttempts)
+                if (await MeasureOnceAsync(proxy, runtime, cancellationToken) || attempt == ProbeAttempts)
                 {
                     break;
                 }
@@ -329,7 +459,7 @@ public sealed class TunnelController : IAsyncDisposable
             while (!cancellationToken.IsCancellationRequested)
             {
                 await Task.Delay(ProbeInterval, cancellationToken);
-                await MeasureOnceAsync(runtime, cancellationToken);
+                await MeasureOnceAsync(proxy, runtime, cancellationToken);
             }
         }
         catch (OperationCanceledException)
@@ -337,16 +467,16 @@ public sealed class TunnelController : IAsyncDisposable
         }
     }
 
-    private async Task<bool> MeasureOnceAsync(RuntimeConfig runtime, CancellationToken cancellationToken)
+    private async Task<bool> MeasureOnceAsync(Uri? proxy, RuntimeConfig? runtime, CancellationToken cancellationToken)
     {
-        if (runtime.IsAutomatic)
+        if (runtime is { IsAutomatic: true })
         {
             await RefreshGroupSelectionAsync(runtime, cancellationToken);
         }
 
         try
         {
-            var result = await _probe.RunAsync(runtime.ProxyUri, cancellationToken);
+            var result = await _probe.RunAsync(proxy, cancellationToken);
             ExitIp = result.ExitIp;
             LatencyMilliseconds = result.LatencyMs;
             ProbeFailure = null;
@@ -431,8 +561,14 @@ public sealed class TunnelController : IAsyncDisposable
                 return;
             }
 
-            var desired = (await NetworkAdapters.ResolveAsync(session.Settings, cancellationToken)).Binding?.InterfaceName;
-            if (string.Equals(desired, _boundInterface, StringComparison.OrdinalIgnoreCase))
+            // Another VPN connecting or dropping can change which engine should carry the
+            // session as well as which adapter it leaves on.
+            var engineChanged = ChooseEngine(session).UseWireSock != (ActiveEngine == "WireSock");
+            var desired = engineChanged || ActiveEngine == "WireSock"
+                ? _boundInterface
+                : (await NetworkAdapters.ResolveAsync(session.Settings, cancellationToken)).Binding?.InterfaceName;
+
+            if (!engineChanged && string.Equals(desired, _boundInterface, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
@@ -559,6 +695,7 @@ public sealed class TunnelController : IAsyncDisposable
         _traffic.Stop();
         StopProbing();
         await _core.StopAsync();
+        await _wireSock.StopAsync();
 
         if (!keepKillSwitch && KillSwitchArmed)
         {
@@ -577,6 +714,8 @@ public sealed class TunnelController : IAsyncDisposable
         Bridges = [];
         ProxyUri = null;
         BindingWarning = null;
+        ActiveEngine = null;
+        EngineNote = null;
     }
 
     private void ClearMeasurements()
@@ -632,7 +771,8 @@ public sealed class TunnelController : IAsyncDisposable
         AppSettings settings,
         IReadOnlyList<AppTarget> apps,
         IReadOnlyList<BridgeRoute> bridges,
-        NetworkBinding? binding)
+        NetworkBinding? binding,
+        int? carryingMtu = null)
     {
         foreach (var warning in target.Tunnels.SelectMany(tunnel => tunnel.Warnings))
         {
@@ -651,8 +791,13 @@ public sealed class TunnelController : IAsyncDisposable
                 ? "Leaving on whichever adapter holds the default route."
                 : $"Leaving on \"{binding.InterfaceName}\".");
 
+        if (carryingMtu is < 1500)
+        {
+            AppLog.Write(LogCategory.Network, $"The carrying adapter's MTU is {carryingMtu}; WireGuard is sized to fit inside it.");
+        }
+
         var runtime = RuntimeConfigBuilder.Build(
-            target, settings, apps, bridges, PortPlan.Reserve(bridges.Count, preferred), binding);
+            target, settings, apps, bridges, PortPlan.Reserve(bridges.Count, preferred), binding, carryingMtu);
 
         AppLog.Write(
             LogCategory.Config,
@@ -720,6 +865,7 @@ public sealed class TunnelController : IAsyncDisposable
         _traffic.Dispose();
         _control.Dispose();
         await _core.DisposeAsync();
+        await _wireSock.DisposeAsync();
 
         if (KillSwitchArmed)
         {

@@ -164,6 +164,28 @@ public class TunnelParserTests
     }
 
     [Fact]
+    public void AmneziaWg_obfuscation_is_recognised_and_the_original_file_kept()
+    {
+        var parsed = TunnelParser.Parse(Fixtures.AmneziaWg);
+
+        Assert.True(parsed.IsAmneziaWg);
+        Assert.Equal("AmneziaWG", parsed.FormatName);
+        Assert.Contains(parsed.Warnings, warning => warning.Contains("AmneziaWG", StringComparison.Ordinal));
+        Assert.Equal(Fixtures.AmneziaWg, parsed.WireGuardConf);
+    }
+
+    [Fact]
+    public void Plain_wireguard_is_not_mistaken_for_amnezia()
+    {
+        var parsed = TunnelParser.Parse(Fixtures.WireGuardConf);
+
+        Assert.False(parsed.IsAmneziaWg);
+        Assert.Equal("WireGuard", parsed.FormatName);
+        Assert.NotNull(parsed.WireGuardConf);
+        Assert.Null(TunnelParser.Parse(Fixtures.Trojan).WireGuardConf);
+    }
+
+    [Fact]
     public void Vmess_carries_udp_as_xudp()
     {
         var payload = """

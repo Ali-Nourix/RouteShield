@@ -107,6 +107,10 @@
                                Foreground="{DynamicResource Neutral500Brush}"
                                Text="{Binding BridgeSummary}" />
                     <TextBlock Style="{StaticResource Caption}" Margin="0,3,0,0" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Neutral500Brush}"
+                               Text="{Binding EngineSummary}"
+                               Visibility="{Binding EngineSummary, Converter={StaticResource ShowIfPresent}}" />
+                    <TextBlock Style="{StaticResource Caption}" Margin="0,3,0,0" TextWrapping="Wrap"
                                Foreground="{DynamicResource AccentOnInkBrush}"
                                Text="{Binding OutboundWarning}"
                                Visibility="{Binding OutboundWarning, Converter={StaticResource ShowIfPresent}}" />

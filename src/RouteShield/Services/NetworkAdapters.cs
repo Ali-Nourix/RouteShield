@@ -15,7 +15,8 @@ public sealed record AdapterChoice(NetworkBinding? Binding, string? Warning);
 
 /// <summary>One adapter as the Outbound setting offers it.</summary>
 /// <param name="Name">The Windows connection name, which is also the name the core knows it by.</param>
-public sealed record NetworkAdapterInfo(string Name, string Description, string Address, bool IsVirtual, bool HasGateway)
+/// <param name="Mtu">The largest IPv4 packet the adapter carries, when Windows reports it.</param>
+public sealed record NetworkAdapterInfo(string Name, string Description, string Address, bool IsVirtual, bool HasGateway, int? Mtu = null)
 {
     public string Label => Address.Length > 0 ? $"{Name} · {Address}" : Name;
 }
@@ -198,8 +199,29 @@ public static class NetworkAdapters
         return false;
     }
 
+    /// <summary>
+    /// The adapter holding the default route, when it belongs to another VPN. That is the
+    /// situation where only an engine working below the routing table can reach the internet
+    /// without going through it.
+    /// </summary>
+    public static NetworkAdapterInfo? OtherVpnHoldingDefaultRoute() =>
+        DefaultRouteHolder() is { IsVirtual: true } holder ? holder : null;
+
+    /// <summary>
+    /// The MTU of the adapter that will carry the tunnel: the pinned one, or whatever holds the
+    /// default route. Inside another VPN it is well under 1500, and a WireGuard peer has to fit.
+    /// </summary>
+    public static int? CarryingMtu(NetworkBinding? binding)
+    {
+        var carrier = binding is null
+            ? DefaultRouteHolder()
+            : Find(binding.InterfaceName) is { } adapter ? Describe(adapter) : null;
+
+        return carrier?.Mtu;
+    }
+
     /// <summary>The adapter Windows would use for a public address right now.</summary>
-    private static NetworkAdapterInfo? DefaultRouteHolder()
+    public static NetworkAdapterInfo? DefaultRouteHolder()
     {
         try
         {
@@ -283,5 +305,21 @@ public static class NetworkAdapters
         adapter.Description,
         Addresses(adapter).FirstOrDefault()?.ToString() ?? string.Empty,
         IsVirtual(adapter),
-        HasGateway(adapter));
+        HasGateway(adapter),
+        MtuOf(adapter));
+
+    private static int? MtuOf(NetworkInterface adapter)
+    {
+        try
+        {
+            return adapter.Supports(NetworkInterfaceComponent.IPv4)
+                   && adapter.GetIPProperties().GetIPv4Properties().Mtu is var mtu and > 0
+                ? mtu
+                : null;
+        }
+        catch (NetworkInformationException)
+        {
+            return null;
+        }
+    }
 }

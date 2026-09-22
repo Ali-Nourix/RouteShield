@@ -28,6 +28,19 @@ public sealed class ParsedTunnel
     /// </summary>
     public int? LinkMtu { get; init; }
 
+    /// <summary>
+    /// The WireGuard configuration exactly as the user supplied it, for engines that read the
+    /// INI format themselves. Null for everything that did not arrive as a .conf.
+    /// </summary>
+    public string? WireGuardConf { get; init; }
+
+    /// <summary>
+    /// True when the .conf carries AmneziaWG obfuscation (junk packets, custom headers). The
+    /// sing-box core speaks plain WireGuard only and would silently drop those settings, which
+    /// against a DPI filter is the difference between connecting and not.
+    /// </summary>
+    public bool IsAmneziaWg { get; init; }
+
     public List<string> Warnings { get; } = [];
 
     public JsonObject Node =>

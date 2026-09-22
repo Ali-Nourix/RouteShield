@@ -25,6 +25,9 @@ the tunnel; everything else keeps your own connection.
   connection instead of abroad and back.
 - **Immune to your other VPN** — the tunnel names the adapter it leaves on, so a corporate
   client taking over the default route cannot drag RouteShield's own traffic through it.
+- **Two engines** — sing-box for every protocol, and WireSock (the engine TunnlTo uses) for
+  WireGuard and AmneziaWG profiles. WireSock works underneath the routing table, so it keeps
+  per-application tunnelling working even while a corporate VPN in full-tunnel mode is connected.
 - **Subscriptions** — HTTPS subscription URLs, plain or Base64, refreshed on demand and
   de-duplicated. URLs are sealed with DPAPI before they touch disk.
 - **Application kill switch** — while the tunnel is up, the routed executables are blocked from
@@ -73,7 +76,7 @@ Options pass straight through:
 
 ```cmd
 build.cmd -Runtime win-arm64
-build.cmd -Version 1.5.1
+build.cmd -Version 1.6.0
 ```
 
 ## Layout
@@ -118,6 +121,22 @@ closed: while the tunnel is down its requests are held rather than sent unprotec
 Both add-ons are packaged with every release — Firefox as an `.xpi`, Chrome as a `.zip` — and
 also sit in the app's `extensions` folder; see [extension/README.md](extension/README.md) for
 installation.
+
+## Engines
+
+RouteShield carries a tunnel with one of two programs.
+
+- **sing-box** (bundled) speaks every protocol, and provides the browser bridge, secure DNS and
+  the kill switch. It captures traffic with a virtual adapter and the routing table, which means it
+  competes with any other VPN for that table.
+- **WireSock** (installed separately; TunnlTo installs it too) carries WireGuard and AmneziaWG
+  profiles. It takes the chosen applications' packets at the network-driver level and sends them on
+  the network card directly, underneath the routing table, so a corporate VPN in full-tunnel mode
+  cannot pull them into its own tunnel. RouteShield writes the routing policy into the profile as
+  WireSock's `#@ws:` directives and runs `wiresock-client run` in transparent mode.
+
+With the engine on *Automatic*, a WireGuard profile runs on WireSock when another VPN holds the
+default route or the profile is AmneziaWG, and everything else runs on sing-box.
 
 ## How the tunnel is put together
 

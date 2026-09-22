@@ -20,6 +20,12 @@
   from the network the chosen adapter is on. When no adapter can route on its own — a corporate
   VPN in full-tunnel mode — the tunnel follows the system default and says so rather than
   pretending to be isolated from it.
+- **WireSock engine.** WireSock is a third-party, closed-source client with its own network
+  driver; RouteShield does not ship it and only runs the copy already installed. While it carries
+  the tunnel, the profile — private key included — is written to
+  `%LocalAppData%\RouteShield\wiresock.conf` and deleted when the tunnel stops, as `runtime.json`
+  is for sing-box. The firewall kill switch is not armed under WireSock: its rules act above the
+  driver WireSock works in and would block the very applications WireSock is carrying.
 - **QUIC.** With the QUIC refusal on, routed applications cannot open UDP connections to ports
   443 and 80; they fall back to TCP, which the tunnel carries properly. This is a reliability
   measure, not a privacy one: nothing about it hides traffic that would otherwise be visible.

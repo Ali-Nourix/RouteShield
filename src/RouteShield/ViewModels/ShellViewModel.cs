@@ -205,6 +205,11 @@ public sealed class ShellViewModel : Observable
     /// <summary>Shown on the dashboard when the tunnel could not leave on the adapter it was told to.</summary>
     public string? OutboundWarning => _tunnel.BindingWarning;
 
+    /// <summary>The program carrying the tunnel, and why, while connected.</summary>
+    public string? EngineSummary => _tunnel.ActiveEngine is { } engine
+        ? $"Engine · {engine}" + (_tunnel.EngineNote is { } note ? $" — {note}" : string.Empty)
+        : null;
+
     public string CoreVersionText => _tunnel.CoreVersion;
 
     public string KillSwitchStateText => _tunnel.KillSwitchArmed ? "Kill switch armed" : "Kill switch idle";
@@ -336,6 +341,42 @@ public sealed class ShellViewModel : Observable
     {
         get => _settings.DirectDomesticSites;
         set => ApplySetting(settings => settings.DirectDomesticSites = value, _settings.DirectDomesticSites == value);
+    }
+
+    // ══ Engine ══
+
+    public TunnelEngine Engine
+    {
+        get => _settings.Engine;
+        set
+        {
+            if (_settings.Engine == value)
+            {
+                return;
+            }
+
+            _settings.Engine = value;
+            Raise(nameof(Engine));
+            Raise(nameof(EngineAvailability));
+            QueueSave();
+        }
+    }
+
+    /// <summary>Whether WireSock is on this machine, which decides what the engine choice can do.</summary>
+    public string EngineAvailability
+    {
+        get
+        {
+            if (WireSockEngine.ExecutablePath is not { } path)
+            {
+                return "WireSock is not installed, so every profile runs on sing-box. Install WireSock Secure Connect — TunnlTo installs it too — to carry WireGuard profiles alongside a corporate VPN.";
+            }
+
+            var holder = NetworkAdapters.OtherVpnHoldingDefaultRoute();
+            return holder is null
+                ? $"WireSock found at {path}."
+                : $"WireSock found at {path}. \"{holder.Name}\" ({holder.Description}) holds the default route right now, so Automatic runs WireGuard profiles on WireSock.";
+        }
     }
 
     // ══ Outbound adapter ══
@@ -1194,6 +1235,7 @@ public sealed class ShellViewModel : Observable
 
         Raise(nameof(SelectedOutboundAdapter));
         Raise(nameof(OutboundSummary));
+        Raise(nameof(EngineAvailability));
     }
 
     private bool IsSelectable(VpnProfile profile) => Profiles.Contains(profile) || _autoProfiles.ContainsValue(profile);
@@ -1525,6 +1567,7 @@ public sealed class ShellViewModel : Observable
         _settings.DirectDomesticSites = defaults.DirectDomesticSites;
         _settings.OutboundBinding = defaults.OutboundBinding;
         _settings.OutboundAdapter = defaults.OutboundAdapter;
+        _settings.Engine = defaults.Engine;
         BrowserBridgeEnabled = defaults.BrowserBridgeEnabled;
         Theme = defaults.Theme;
 
@@ -1552,7 +1595,7 @@ public sealed class ShellViewModel : Observable
                          nameof(UptimeText), nameof(LatencyText), nameof(ThroughputText), nameof(ExitIpText),
                          nameof(ProbeFailure), nameof(CoreVersionText), nameof(KillSwitchStateText),
                          nameof(AppStateWord), nameof(BridgeSummary), nameof(SelectedProfileLabel),
-                         nameof(OutboundSummary), nameof(OutboundWarning)
+                         nameof(OutboundSummary), nameof(OutboundWarning), nameof(EngineSummary)
                      })
             {
                 Raise(property);
@@ -1660,6 +1703,7 @@ public sealed class ShellViewModel : Observable
                      nameof(CloseToTray), nameof(StartWithWindows), nameof(BrowserBridgeEnabled), nameof(BridgeSummary),
                      nameof(TlsFragment), nameof(BlockQuic), nameof(DirectDomesticSites), nameof(Theme),
                      nameof(OutboundBinding), nameof(SelectedOutboundAdapter), nameof(CanChooseAdapter), nameof(OutboundSummary),
+                     nameof(Engine), nameof(EngineAvailability),
                      nameof(ShowFirstRun), nameof(AppSummary), nameof(StateWord), nameof(StatusDetail)
                  })
         {

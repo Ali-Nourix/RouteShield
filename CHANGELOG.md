@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.6.0
+
+### Added
+
+- **A second engine: WireSock, for WireGuard profiles — the one TunnlTo uses.** sing-box captures
+  traffic with a virtual adapter and routes, so it competes for the routing table with any other
+  VPN, and a corporate client such as Cisco AnyConnect in full-tunnel mode always wins: every dial
+  either goes through the corporate network, where the firewall refuses it, or finds no route on
+  the physical adapter at all. WireSock takes the chosen applications' packets at the network-driver
+  level and sends them on the network card directly, underneath the routing table, so the other
+  VPN's routes are never consulted. That is why TunnlTo worked on the same machine while
+  RouteShield did not.
+
+  *Security & behaviour → Engine* offers **Automatic** (the default), **sing-box** and **WireSock**.
+  Automatic runs a WireGuard profile on WireSock when another VPN holds the default route, or when
+  the profile is AmneziaWG, and everything else on sing-box. The routing policy is written into the
+  profile as WireSock's own directives — `#@ws:AllowedApps` for the selected applications,
+  `#@ws:DisallowedApps` for the excluded ones, `#@ws:DisallowedIPs` for the local network — and
+  RouteShield itself rides along so the exit-address probe measures the tunnel. The dashboard says
+  which engine is carrying the tunnel and why. WireSock is not shipped with RouteShield: it is found
+  where its installer, or TunnlTo's, put it. It carries WireGuard only; the browser bridge, secure
+  DNS and the firewall kill switch are sing-box features and are off while WireSock runs.
+- **AmneziaWG profiles are recognised.** A `.conf` with junk-packet and header obfuscation (`Jc`,
+  `Jmin`, `Jmax`, `S1`, `S2`, `H1`–`H4`) is labelled AmneziaWG. sing-box cannot speak it and would
+  connect as plain WireGuard, which a DPI filter may block; the Automatic engine runs it on WireSock,
+  which passes the obfuscation through untouched.
+
+### Fixed
+
+- **WireGuard stalled inside another VPN.** A peer sized for a plain 1500-byte link produced
+  datagrams larger than a corporate VPN adapter carries — Cisco's runs at 1300 to 1400 — and the
+  socket refused them: handshakes and small packets passed, pages and video stalled. The tunnel now
+  reads the MTU of the adapter actually carrying it and sizes WireGuard, and the tunnel interface in
+  front of it, to fit. Stream-based proxies are unaffected; they re-segment everything themselves.
+
 ## 1.5.1
 
 ### Fixed

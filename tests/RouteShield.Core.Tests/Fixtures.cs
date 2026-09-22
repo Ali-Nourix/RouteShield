@@ -48,6 +48,28 @@ internal static class Fixtures
         Endpoint = wg.example.net:51820
         """;
 
+    /// <summary>WireGuard with AmneziaWG obfuscation, and a WireSock directive left over from another client.</summary>
+    public const string AmneziaWg = """
+        [Interface]
+        PrivateKey = /TjUAUe2m107+7gwTN9jNfWz/FEUrEacrL37qj64/D0=
+        Address = 10.8.0.2/32
+        DNS = 1.1.1.1
+        MTU = 1420
+        Jc = 4
+        Jmin = 40
+        Jmax = 70
+        S1 = 21
+        S2 = 58
+        H1 = 1
+
+        [Peer]
+        PublicKey = /TjUAUe2m107+7gwTN9jNfWz/FEUrEacrL37qj64/D0=
+        AllowedIPs = 0.0.0.0/0
+        Endpoint = wg.example.net:51820
+        #@ws:AllowedApps = old.exe
+        DisallowedApps = stale
+        """;
+
     public const string SingBoxJson = """
         {
           "outbounds": [

@@ -151,6 +151,34 @@
                 </Grid>
 
                 <Border Margin="0,26,0,0" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="Engine" />
+                </Border>
+
+                <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1" Padding="0,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SettingName}" Text="Which program carries the tunnel" />
+                        <TextBlock Style="{StaticResource HelpText}" Margin="0,3,0,0" MaxWidth="720"
+                                   HorizontalAlignment="Left"
+                                   Text="sing-box carries every protocol with a virtual adapter and routes, so it competes for the routing table with any other VPN — and a corporate client in full-tunnel mode always wins. WireSock, the engine TunnlTo uses, takes the chosen applications' packets at the driver level and sends them on the network card directly, underneath the routing table; it carries WireGuard and AmneziaWG profiles only. Automatic uses WireSock for a WireGuard profile when another VPN holds the default route or the profile is AmneziaWG, and sing-box for everything else." />
+
+                        <Border Margin="0,12,0,0" CornerRadius="{StaticResource RadiusMd}" BorderThickness="1"
+                                BorderBrush="{DynamicResource DividerBrush}" HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton Style="{StaticResource SegmentOption}" Content="Automatic" GroupName="Engine"
+                                             IsChecked="{Binding Engine, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=Automatic}" />
+                                <RadioButton Style="{StaticResource SegmentOption}" Content="sing-box" GroupName="Engine"
+                                             IsChecked="{Binding Engine, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=SingBox}" />
+                                <RadioButton Style="{StaticResource SegmentOption}" Content="WireSock" GroupName="Engine"
+                                             IsChecked="{Binding Engine, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=WireSock}" />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Style="{StaticResource Caption}" Margin="0,8,0,0" TextWrapping="Wrap" MaxWidth="720"
+                                   HorizontalAlignment="Left" Text="{Binding EngineAvailability}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Margin="0,26,0,0" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
                     <Grid>
                         <TextBlock Style="{StaticResource SectionTitle}" Text="Outbound adapter" />
                         <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Right" VerticalAlignment="Bottom"

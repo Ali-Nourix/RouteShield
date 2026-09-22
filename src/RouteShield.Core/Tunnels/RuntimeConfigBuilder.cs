@@ -30,6 +30,12 @@ public static class RuntimeConfigBuilder
     public const string TunnelInterfaceName = "RouteShield";
     public const string ProbeInboundTag = "probe-in";
 
+    /// <summary>IPv6 outer header, UDP header and WireGuard's own framing: the most a tunnel adds.</summary>
+    private const int WireGuardOverhead = 80;
+
+    /// <summary>The IPv6 minimum; below it a WireGuard peer can no longer carry IPv6 at all.</summary>
+    private const int MinimumWireGuardMtu = 1280;
+
     private const string FakeIpv4Range = "198.18.0.0/15";
     private const string FakeIpv6Range = "fc00::/18";
     private const int TunnelMtu = 9000;
@@ -101,7 +107,8 @@ public static class RuntimeConfigBuilder
         IEnumerable<AppTarget> apps,
         IReadOnlyList<BridgeRoute> bridges,
         PortPlan ports,
-        NetworkBinding? binding = null)
+        NetworkBinding? binding = null,
+        int? underlayMtu = null)
     {
         if (ports.BridgePorts.Count != bridges.Count)
         {
@@ -123,7 +130,7 @@ public static class RuntimeConfigBuilder
         // handed v6 destinations, or every one of them fails with "missing IPv6 local address".
         var carriesIpv6 = settings.Ipv6Protection && target.Tunnels.All(tunnel => tunnel.CarriesIpv6);
 
-        var inbounds = BuildInbounds(settings, ports.ProxyPort, carriesIpv6, TunnelMtuFor(target));
+        var inbounds = BuildInbounds(settings, ports.ProxyPort, carriesIpv6, TunnelMtuFor(target, underlayMtu));
         var rules = BuildLeadingRules(settings);
         var bindings = new List<BridgeBinding>(bridges.Count);
 
@@ -178,6 +185,7 @@ public static class RuntimeConfigBuilder
 
         if (endpoints.Count > 0)
         {
+            FitWireGuardToUnderlay(endpoints, underlayMtu);
             root["endpoints"] = endpoints;
         }
 
@@ -308,8 +316,41 @@ public static class RuntimeConfigBuilder
     /// wraps each packet in one UDP datagram, so a 9000-byte frame from the interface becomes a
     /// datagram the socket refuses to send; the interface takes the peer's own MTU instead.
     /// </summary>
-    private static int TunnelMtuFor(ConnectionTarget target) =>
-        target.Tunnels.Select(tunnel => tunnel.LinkMtu ?? TunnelMtu).Append(TunnelMtu).Min();
+    private static int TunnelMtuFor(ConnectionTarget target, int? underlayMtu)
+    {
+        var mtu = target.Tunnels.Select(tunnel => tunnel.LinkMtu ?? TunnelMtu).Append(TunnelMtu).Min();
+
+        // Only a node that wraps packets in datagrams cares what carries it; a TCP-based proxy
+        // re-segments everything into its own stream whatever the interface offers.
+        return target.Tunnels.Any(tunnel => tunnel.Endpoint is not null) && WireGuardMtuWithin(underlayMtu) is { } fitted
+            ? Math.Min(mtu, fitted)
+            : mtu;
+    }
+
+    /// <summary>
+    /// The largest WireGuard MTU that fits inside the adapter carrying it. Inside another VPN
+    /// — Cisco's adapter runs at 1300 to 1400 — a peer set for a plain 1500-byte link produces
+    /// datagrams the socket refuses to send ("a message sent on a datagram socket was larger
+    /// than the internal message buffer"): handshakes and small packets pass, pages and video
+    /// stall. The overhead allowed is WireGuard over an IPv6 outer header, the larger case.
+    /// </summary>
+    private static int? WireGuardMtuWithin(int? underlayMtu) =>
+        underlayMtu is > 0 and < 1500 ? Math.Max(MinimumWireGuardMtu, underlayMtu.Value - WireGuardOverhead) : null;
+
+    private static void FitWireGuardToUnderlay(JsonArray endpoints, int? underlayMtu)
+    {
+        if (WireGuardMtuWithin(underlayMtu) is not { } fitted)
+        {
+            return;
+        }
+
+        foreach (var endpoint in endpoints.OfType<JsonObject>()
+                     .Where(node => TunnelParser.ReadString(node, "type") == "wireguard"))
+        {
+            var declared = endpoint["mtu"]?.GetValue<int>() ?? TunnelParser.DefaultWireGuardMtu;
+            endpoint["mtu"] = Math.Min(declared, fitted);
+        }
+    }
 
     private static JsonObject BuildDns(AppSettings settings, bool carriesIpv6)
     {
