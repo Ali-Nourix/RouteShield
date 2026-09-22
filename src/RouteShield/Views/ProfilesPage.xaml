@@ -91,6 +91,7 @@
                                         </StackPanel>
                                         <TextBlock Margin="0,3,0,0" TextTrimming="CharacterEllipsis"
                                                    Text="{Binding Name.Subscription.StatusText}"
+                                                   ToolTip="{Binding Name.Subscription.StatusDetails}"
                                                    Visibility="{Binding Name.IsSubscription, Converter={StaticResource Show}}">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock" BasedOn="{StaticResource Caption}">

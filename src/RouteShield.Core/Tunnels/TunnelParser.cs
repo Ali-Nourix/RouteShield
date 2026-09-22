@@ -899,7 +899,7 @@ public static class TunnelParser
         return value.TryGetValue<string>(out var text) ? text : value.ToJsonString().Trim('"');
     }
 
-    private static int? ReadInt(JsonObject node, string key)
+    internal static int? ReadInt(JsonObject node, string key)
     {
         if (node[key] is not JsonValue value)
         {

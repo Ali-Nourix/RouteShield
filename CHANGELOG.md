@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.7.0
+
+### Fixed
+
+- **An automatic group could carry every connection over a provider's quota line.** Panels put
+  the account's remaining traffic and expiry into the subscription as extra entries — "7.75 GB
+  left" on a link to 1.1.1.1:53966 — and RouteShield imported them as nodes. The core carries a
+  group's traffic over its first member until its own test has passed, and over it for good when
+  no test passes; the first entry is exactly where panels put these lines. The dashboard read
+  "via 7.75 G…" and every connection was reset. Such entries are now recognised by their address —
+  a public resolver, loopback, an unspecified, link-local or multicast address, port 0 or 1 — and
+  never by their name, because some panels write the remaining traffic into every real node's name
+  as well. They are kept as notes on the subscription. Entries saved by an earlier version are moved
+  there when the app starts, and a group never takes one as a member.
+- **Subscriptions dropped Hysteria2, TUIC and AnyTLS links.** The profile parser read them but the
+  subscription reader did not recognise the schemes, so those nodes vanished on refresh without a
+  word, and a Base64 body holding only such links was rejected as holding no configuration.
+- **An adapter blocked by another VPN's filter counted as usable.** A full-tunnel client can refuse
+  sockets on the other adapters with "access denied" instead of taking their route away. That now
+  counts the same as having no route, and the tunnel says so instead of dialling into the filter.
+
+### Added
+
+- **Every node of an automatic group is tested as soon as the tunnel is up.** Each answer is stored
+  with its delay and makes the core choose again, so the group is on the fastest node that answers
+  within a second or two, instead of when the core's own round ends, which waits for its slowest
+  member. The dashboard shows how many nodes answer and which is fastest. When none does, it says
+  so, and names what is most likely in the way: another VPN holding every route, which only
+  WireGuard on WireSock can get underneath; a subscription the provider reports as used up or
+  expired; or a network that blocks the servers. Each node's result is in the log. A probe that
+  fails later repeats the test, at most every two minutes.
+- **Groups are ordered by the last latency test.** Nodes that answered come first, fastest on top,
+  then the untested ones, then the ones that failed. The first member is the one that carries
+  traffic before the core's first test is in, so it should be a good one.
+- **Subscription usage.** The `subscription-userinfo` header that panels send is read. The library
+  shows the traffic left and the time to expiry beside each subscription, with the provider's notes
+  in the tooltip. A refresh that returns notes and no servers, which is what a panel sends for a
+  spent account and sometimes by mistake, keeps the nodes already there and says why.
+
 ## 1.6.0
 
 ### Added

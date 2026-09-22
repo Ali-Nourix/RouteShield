@@ -14,13 +14,13 @@ namespace RouteShield.Subscriptions;
 public sealed class SubscriptionService : IDisposable
 {
     private const int MaxBytes = 5 * 1024 * 1024;
-    private const string UserAgent = "RouteShield/1.6.0 (sing-box)";
+    private const string UserAgent = "RouteShield/1.7.0 (sing-box)";
 
     private readonly Dictionary<string, HttpClient> _clients = [];
     private readonly object _gate = new();
 
     /// <param name="proxy">The tunnel's loopback proxy, when one is up; null to go out directly.</param>
-    public async Task<IReadOnlyList<SubscriptionEntry>> FetchAsync(
+    public async Task<SubscriptionFetch> FetchAsync(
         string url, Uri? proxy = null, CancellationToken cancellationToken = default)
     {
         if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
@@ -38,7 +38,11 @@ public sealed class SubscriptionService : IDisposable
         }
 
         var body = await ReadCappedAsync(response, cancellationToken);
-        return SubscriptionParser.Parse(body);
+        var usage = response.Headers.TryGetValues(SubscriptionUsage.HeaderName, out var values)
+            ? SubscriptionUsage.Parse(values.FirstOrDefault())
+            : null;
+
+        return new SubscriptionFetch(SubscriptionParser.Parse(body), usage);
     }
 
     /// <summary>One client per route, kept for the session: a new handler per refresh would leak sockets.</summary>

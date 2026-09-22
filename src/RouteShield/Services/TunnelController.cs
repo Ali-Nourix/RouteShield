@@ -1,7 +1,10 @@
 using System.IO;
+using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.NetworkInformation;
 using System.Text;
+using System.Text.Json;
 using RouteShield.Tunnels;
 
 namespace RouteShield.Services;
@@ -30,6 +33,13 @@ public sealed class TunnelController : IAsyncDisposable
     /// <summary>Adapters settle noisily — a VPN connecting fires several changes — so the rebind waits them out.</summary>
     private static readonly TimeSpan RebindSettleDelay = TimeSpan.FromSeconds(4);
 
+    /// <summary>How many members of an automatic group are tested at once, and how long each may take.</summary>
+    private const int GroupCheckParallelism = 8;
+    private static readonly TimeSpan GroupMemberTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>A failing probe tests the whole group again, but not more often than this.</summary>
+    private static readonly TimeSpan GroupRecheckInterval = TimeSpan.FromMinutes(2);
+
     private readonly CoreProcessService _core = new();
     private readonly WireSockEngine _wireSock = new();
     private readonly FirewallService _firewall = new();
@@ -37,6 +47,9 @@ public sealed class TunnelController : IAsyncDisposable
     private readonly TrafficMeter _traffic = new();
     private readonly SemaphoreSlim _transition = new(1, 1);
     private readonly HttpClient _control = new() { Timeout = TimeSpan.FromSeconds(4) };
+
+    /// <summary>For the group tests, which set their own deadline per member.</summary>
+    private readonly HttpClient _groupControl = new() { Timeout = Timeout.InfiniteTimeSpan };
 
     /// <summary>The port each bridge route listened on last time, asked for again on the next start.</summary>
     private readonly Dictionary<(BridgeKind Kind, Guid? ProfileId), int> _lastBridgePorts = [];
@@ -46,6 +59,8 @@ public sealed class TunnelController : IAsyncDisposable
     private CancellationTokenSource? _probing;
     private CancellationTokenSource? _rebind;
     private string? _boundInterface;
+    private DateTimeOffset _lastGroupCheck;
+    private DateTimeOffset? _lastProbeSuccess;
 
     public TunnelController()
     {
@@ -112,6 +127,12 @@ public sealed class TunnelController : IAsyncDisposable
 
     /// <summary>The node an automatic group is carrying traffic over right now; null for a single node.</summary>
     public string? GroupSelection { get; private set; }
+
+    /// <summary>The last test of every member of the automatic group; null for a single node or before the first.</summary>
+    public GroupHealth? GroupHealth { get; private set; }
+
+    /// <summary>Set when no member of the automatic group answered, with what can be done about it.</summary>
+    public string? GroupWarning { get; private set; }
 
     public async Task LoadCoreVersionAsync()
     {
@@ -326,6 +347,8 @@ public sealed class TunnelController : IAsyncDisposable
         Bridges = runtime.Bridges;
         ProxyUri = runtime.ProxyUri;
         GroupSelection = runtime.IsAutomatic ? "choosing…" : null;
+        GroupHealth = null;
+        GroupWarning = null;
 
         foreach (var bridge in runtime.Bridges)
         {
@@ -446,25 +469,153 @@ public sealed class TunnelController : IAsyncDisposable
     {
         try
         {
-            for (var attempt = 1; attempt <= ProbeAttempts; attempt++)
-            {
-                if (await MeasureOnceAsync(proxy, runtime, cancellationToken) || attempt == ProbeAttempts)
-                {
-                    break;
-                }
+            // An automatic group is tested member by member alongside the first probe, not
+            // before it. Every answer moves the group onto the fastest node there and then; the
+            // core's own round only decides once its slowest member has timed out.
+            var automatic = runtime is { IsAutomatic: true } ? runtime : null;
+            var groupCheck = automatic is null ? Task.CompletedTask : CheckGroupAsync(automatic, cancellationToken);
 
-                await Task.Delay(ProbeRetryDelay, cancellationToken);
+            var healthy = false;
+            for (var attempt = 1; attempt <= ProbeAttempts && !healthy; attempt++)
+            {
+                healthy = await MeasureOnceAsync(proxy, runtime, cancellationToken);
+                if (!healthy && attempt < ProbeAttempts)
+                {
+                    await Task.Delay(ProbeRetryDelay, cancellationToken);
+                }
+            }
+
+            await groupCheck;
+            if (!healthy && GroupHealth is { Answering: > 0 })
+            {
+                // The probe went out over a member the group has since moved off.
+                await MeasureOnceAsync(proxy, runtime, cancellationToken);
             }
 
             while (!cancellationToken.IsCancellationRequested)
             {
                 await Task.Delay(ProbeInterval, cancellationToken);
-                await MeasureOnceAsync(proxy, runtime, cancellationToken);
+                if (await MeasureOnceAsync(proxy, runtime, cancellationToken) || automatic is null
+                    || DateTimeOffset.Now - _lastGroupCheck < GroupRecheckInterval)
+                {
+                    continue;
+                }
+
+                await CheckGroupAsync(automatic, cancellationToken);
+                if (GroupHealth is { Answering: > 0 })
+                {
+                    await MeasureOnceAsync(proxy, runtime, cancellationToken);
+                }
             }
         }
         catch (OperationCanceledException)
         {
         }
+    }
+
+    /// <summary>
+    /// Tests every member of the automatic group through the core's Clash API. A member that
+    /// answers is stored with its delay and makes the group choose again, so the group is on
+    /// the fastest node as soon as that answer is in. When none answers, the dashboard says so,
+    /// and says what is most likely in the way.
+    /// </summary>
+    private async Task CheckGroupAsync(RuntimeConfig runtime, CancellationToken cancellationToken)
+    {
+        var started = DateTimeOffset.Now;
+        _lastGroupCheck = started;
+
+        using var slots = new SemaphoreSlim(GroupCheckParallelism);
+        var checks = await Task.WhenAll(runtime.Members.Select(async member =>
+        {
+            await slots.WaitAsync(cancellationToken);
+            try
+            {
+                return await CheckMemberAsync(runtime, member, cancellationToken);
+            }
+            finally
+            {
+                slots.Release();
+            }
+        }));
+
+        var health = new GroupHealth(checks);
+        GroupHealth = health;
+        AppLog.Write(LogCategory.Network, $"Group test: {health.Summary}");
+        AppLog.Write(LogCategory.Network, $"Group test by node: {health.Details}");
+
+        // A probe that got through while the test ran outranks it: traffic is flowing.
+        GroupWarning = health.NoneAnswer && !(_lastProbeSuccess >= started) ? ExplainSilentGroup(health) : null;
+        if (GroupWarning is not null)
+        {
+            AppLog.Write(LogCategory.Network, GroupWarning);
+        }
+
+        Changed?.Invoke();
+        await RefreshGroupSelectionAsync(runtime, cancellationToken);
+    }
+
+    private async Task<MemberCheck> CheckMemberAsync(RuntimeConfig runtime, GroupMember member, CancellationToken cancellationToken)
+    {
+        var query = $"proxies/{Uri.EscapeDataString(member.Tag)}/delay" +
+                    $"?url={Uri.EscapeDataString(RuntimeConfigBuilder.GroupTestUrl)}&timeout={(int)GroupMemberTimeout.TotalMilliseconds}";
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(runtime.ControlUri, query));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", runtime.ControlSecret);
+
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(GroupMemberTimeout + TimeSpan.FromSeconds(3));
+
+            using var response = await _groupControl.SendAsync(request, deadline.Token);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(deadline.Token));
+
+            if (response.IsSuccessStatusCode
+                && document.RootElement.TryGetProperty("delay", out var delay)
+                && delay.TryGetInt32(out var milliseconds)
+                && milliseconds > 0)
+            {
+                return new MemberCheck(member.Tag, member.Name, milliseconds, null);
+            }
+
+            return new MemberCheck(
+                member.Tag,
+                member.Name,
+                null,
+                response.StatusCode == HttpStatusCode.GatewayTimeout ? MemberCheck.TimeoutFailure : MemberCheck.UnreachableFailure);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new MemberCheck(member.Tag, member.Name, null, MemberCheck.TimeoutFailure);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or IOException)
+        {
+            return new MemberCheck(member.Tag, member.Name, null, MemberCheck.UnreachableFailure);
+        }
+    }
+
+    /// <summary>What most likely keeps every node of the group from answering, and what to do.</summary>
+    private string ExplainSilentGroup(GroupHealth health)
+    {
+        var opening = $"None of the {health.Members.Count} nodes answered a test, so nothing gets through.";
+        var holder = NetworkAdapters.OtherVpnHoldingDefaultRoute();
+
+        if (holder is not null && _boundInterface is null)
+        {
+            return opening +
+                   $" Every connection has to go through \"{holder.Name}\" ({holder.Description}), and the network behind it is refusing these servers." +
+                   " VLESS, VMess, Trojan and the rest cannot get underneath that VPN; WireGuard can, on WireSock" +
+                   (WireSockEngine.IsInstalled ? "." : " (install WireSock Secure Connect; TunnlTo installs it too).") +
+                   " Disconnect it, or connect with a WireGuard profile.";
+        }
+
+        if (holder is not null)
+        {
+            return opening +
+                   $" \"{holder.Name}\" ({holder.Description}) is connected and may be filtering the other adapters. Disconnect it and connect again.";
+        }
+
+        return opening + " The network may be blocking these servers, or the subscription may have run out. Refresh it, turn on TLS fragment under Security, or try another subscription.";
     }
 
     private async Task<bool> MeasureOnceAsync(Uri? proxy, RuntimeConfig? runtime, CancellationToken cancellationToken)
@@ -480,6 +631,8 @@ public sealed class TunnelController : IAsyncDisposable
             ExitIp = result.ExitIp;
             LatencyMilliseconds = result.LatencyMs;
             ProbeFailure = null;
+            GroupWarning = null;
+            _lastProbeSuccess = DateTimeOffset.Now;
             AppLog.Write(LogCategory.Network, $"Probe ok — exit {result.ExitIp}, rtt {result.LatencyMs} ms");
             Changed?.Invoke();
             return true;
@@ -725,45 +878,10 @@ public sealed class TunnelController : IAsyncDisposable
         LatencyMilliseconds = null;
         ProbeFailure = null;
         GroupSelection = null;
+        GroupHealth = null;
+        GroupWarning = null;
+        _lastProbeSuccess = null;
         ThroughputMegabytesPerSecond = 0;
-    }
-
-    /// <summary>
-    /// Turns a profile into what the core connects to. A node profile is parsed as itself; an
-    /// automatic profile gathers every node of its subscription that parses, so one broken
-    /// link in a subscription costs one member, not the whole group.
-    /// </summary>
-    public static ConnectionTarget ResolveTarget(VpnProfile profile, IEnumerable<VpnProfile> library)
-    {
-        if (!profile.IsAutomatic)
-        {
-            if (string.IsNullOrWhiteSpace(profile.ConfigText))
-            {
-                throw new InvalidOperationException($"Profile \"{profile.Name}\" has no configuration body.");
-            }
-
-            return ConnectionTarget.Single(TunnelParser.Parse(profile.ConfigText));
-        }
-
-        var members = new List<(string Name, ParsedTunnel Tunnel)>();
-        foreach (var candidate in library.Where(candidate => !candidate.IsAutomatic && candidate.SubscriptionId == profile.SubscriptionId))
-        {
-            try
-            {
-                members.Add((candidate.Name, TunnelParser.Parse(candidate.ConfigText)));
-            }
-            catch (Exception exception) when (exception is FormatException or NotSupportedException or InvalidOperationException)
-            {
-                AppLog.Write(LogCategory.Config, $"\"{candidate.Name}\" left out of the automatic group: {exception.Message}");
-            }
-        }
-
-        if (members.Count == 0)
-        {
-            throw new InvalidOperationException($"\"{profile.Name}\" has no usable node. Refresh the subscription first.");
-        }
-
-        return ConnectionTarget.Automatic(profile.Name, members);
     }
 
     private RuntimeConfig BuildRuntime(
@@ -864,6 +982,7 @@ public sealed class TunnelController : IAsyncDisposable
         StopProbing();
         _traffic.Dispose();
         _control.Dispose();
+        _groupControl.Dispose();
         await _core.DisposeAsync();
         await _wireSock.DisposeAsync();
 

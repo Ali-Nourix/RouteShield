@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
+using RouteShield.Subscriptions;
 
 namespace RouteShield;
 
@@ -212,6 +213,11 @@ public sealed class VpnSubscription : Observable
     private string _lastError = string.Empty;
     private DateTimeOffset? _lastUpdated;
     private int _lastCount;
+    private List<string> _notes = [];
+    private long? _uploadBytes;
+    private long? _downloadBytes;
+    private long? _totalBytes;
+    private DateTimeOffset? _expiresAt;
 
     public Guid Id { get; set; } = Guid.NewGuid();
 
@@ -249,6 +255,91 @@ public sealed class VpnSubscription : Observable
         set => Set(ref _lastError, value);
     }
 
+    /// <summary>
+    /// What the provider wrote among the nodes instead of a server — "7.75 GB left",
+    /// "Expires 2026-10-01" — kept as text rather than as profiles that point nowhere.
+    /// </summary>
+    public List<string> Notes
+    {
+        get => _notes;
+        set => Set(ref _notes, value ?? []);
+    }
+
+    /// <summary>From the provider's <c>subscription-userinfo</c> header; null when it did not say.</summary>
+    public long? UploadBytes
+    {
+        get => _uploadBytes;
+        set => Set(ref _uploadBytes, value);
+    }
+
+    public long? DownloadBytes
+    {
+        get => _downloadBytes;
+        set => Set(ref _downloadBytes, value);
+    }
+
+    public long? TotalBytes
+    {
+        get => _totalBytes;
+        set => Set(ref _totalBytes, value);
+    }
+
+    public DateTimeOffset? ExpiresAt
+    {
+        get => _expiresAt;
+        set => Set(ref _expiresAt, value);
+    }
+
+    [JsonIgnore]
+    public SubscriptionUsage? Usage => UploadBytes is null && DownloadBytes is null && TotalBytes is null && ExpiresAt is null
+        ? null
+        : new SubscriptionUsage(UploadBytes, DownloadBytes, TotalBytes, ExpiresAt);
+
+    /// <summary>True when the provider says the account is used up or past its date, which no node can work around.</summary>
+    [JsonIgnore]
+    public bool IsExhausted => Usage is { } usage && (usage.RemainingBytes == 0 || usage.ExpiresAt <= DateTimeOffset.Now);
+
+    public void ApplyUsage(SubscriptionUsage? usage)
+    {
+        UploadBytes = usage?.UploadBytes;
+        DownloadBytes = usage?.DownloadBytes;
+        TotalBytes = usage?.TotalBytes;
+        ExpiresAt = usage?.ExpiresAt;
+    }
+
+    /// <summary>"7.75 GB left of 50 GB · expires in 12 d"; the provider's notes when it sent no header; empty when neither.</summary>
+    [JsonIgnore]
+    public string UsageText
+    {
+        get
+        {
+            if (Usage is not { } usage)
+            {
+                return string.Join(" · ", Notes.Take(2));
+            }
+
+            var parts = new List<string>();
+            if (usage.RemainingBytes is { } remaining)
+            {
+                parts.Add(remaining == 0
+                    ? "no traffic left"
+                    : $"{SubscriptionUsage.FormatBytes(remaining)} left of {SubscriptionUsage.FormatBytes(usage.TotalBytes!.Value)}");
+            }
+            else if (usage.UsedBytes is { } used)
+            {
+                parts.Add($"{SubscriptionUsage.FormatBytes(used)} used");
+            }
+
+            if (usage.ExpiresAt is { } expires)
+            {
+                var left = expires - DateTimeOffset.Now;
+                parts.Add(left <= TimeSpan.Zero ? "expired" : $"expires in {Humanize(left)}");
+            }
+
+            return string.Join(" · ", parts);
+        }
+    }
+
     [JsonIgnore]
     public string StatusText
     {
@@ -259,30 +350,46 @@ public sealed class VpnSubscription : Observable
                 return $"Failed · {LastError}";
             }
 
-            return LastUpdated is null
-                ? "Never updated"
-                : $"{LastCount} nodes · updated {Humanize(DateTimeOffset.Now - LastUpdated.Value)}";
+            if (LastUpdated is null)
+            {
+                return "Never updated";
+            }
+
+            var age = DateTimeOffset.Now - LastUpdated.Value;
+            var status = $"{LastCount} nodes · updated {(age.TotalMinutes < 1 ? "just now" : Humanize(age) + " ago")}";
+            return UsageText is { Length: > 0 } usage ? $"{status} · {usage}" : status;
         }
     }
+
+    /// <summary>The status with every note the provider sent, for where the one-line status is cut short.</summary>
+    [JsonIgnore]
+    public string StatusDetails => Notes.Count == 0
+        ? StatusText
+        : $"{StatusText}{Environment.NewLine}{Environment.NewLine}From the provider:{Environment.NewLine}{string.Join(Environment.NewLine, Notes)}";
 
     [JsonIgnore]
     public bool HasError => !string.IsNullOrWhiteSpace(LastError);
 
+    private static readonly string[] DerivedProperties =
+        [nameof(StatusText), nameof(StatusDetails), nameof(HasError), nameof(UsageText), nameof(Usage), nameof(IsExhausted)];
+
     protected override void OnPropertyChanged(string? propertyName)
     {
-        if (propertyName is not (nameof(StatusText) or nameof(HasError)))
+        if (!DerivedProperties.Contains(propertyName))
         {
-            Raise(nameof(StatusText));
-            Raise(nameof(HasError));
+            foreach (var derived in DerivedProperties)
+            {
+                Raise(derived);
+            }
         }
     }
 
-    private static string Humanize(TimeSpan age) => age switch
+    private static string Humanize(TimeSpan span) => span switch
     {
-        { TotalMinutes: < 1 } => "just now",
-        { TotalMinutes: < 60 } => $"{(int)age.TotalMinutes} min ago",
-        { TotalHours: < 24 } => $"{(int)age.TotalHours} h ago",
-        _ => $"{(int)age.TotalDays} d ago"
+        { TotalMinutes: < 1 } => "under a minute",
+        { TotalMinutes: < 60 } => $"{(int)span.TotalMinutes} min",
+        { TotalHours: < 24 } => $"{(int)span.TotalHours} h",
+        _ => $"{(int)span.TotalDays} d"
     };
 }
 

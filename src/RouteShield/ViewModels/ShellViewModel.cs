@@ -205,6 +205,36 @@ public sealed class ShellViewModel : Observable
     /// <summary>Shown on the dashboard when the tunnel could not leave on the adapter it was told to.</summary>
     public string? OutboundWarning => _tunnel.BindingWarning;
 
+    /// <summary>How the automatic group's nodes answered their last test, while some do.</summary>
+    public string? GroupHealthText => _tunnel.GroupHealth is { NoneAnswer: false } health ? health.Summary : null;
+
+    /// <summary>
+    /// Shown when no node of the automatic group answers. A subscription the provider reports as
+    /// used up or expired is named first, because no setting on this side can fix that.
+    /// </summary>
+    public string? GroupWarning
+    {
+        get
+        {
+            if (_tunnel.GroupWarning is not { } warning)
+            {
+                return null;
+            }
+
+            var subscription = _tunnel.ActiveProfile is { IsAutomatic: true } active
+                ? Subscriptions.FirstOrDefault(candidate => candidate.Id == active.SubscriptionId)
+                : null;
+
+            if (subscription is not { IsExhausted: true, Usage: { } usage })
+            {
+                return warning;
+            }
+
+            var state = usage.ExpiresAt <= DateTimeOffset.Now ? "past its expiry date" : "out of traffic";
+            return $"The provider reports \"{subscription.Name}\" as {state}; renew it first. {warning}";
+        }
+    }
+
     /// <summary>The program carrying the tunnel, and why, while connected.</summary>
     public string? EngineSummary => _tunnel.ActiveEngine is { } engine
         ? $"Engine · {engine}" + (_tunnel.EngineNote is { } note ? $" — {note}" : string.Empty)
@@ -586,6 +616,7 @@ public sealed class ShellViewModel : Observable
     public string SelectedProfileLabel => SelectedProfile switch
     {
         null => "No profile selected",
+        { IsAutomatic: true } when IsConnected && _tunnel.GroupWarning is not null => $"{SelectedProfile.Name} · no node answers",
         { IsAutomatic: true } when IsConnected && _tunnel.GroupSelection is { } node => $"{SelectedProfile.Name} · via {node}",
         { IsAutomatic: true } => $"{SelectedProfile.Name} · the core picks the node",
         _ => $"{SelectedProfile.Name} · {SelectedProfile.Format}"
@@ -800,6 +831,8 @@ public sealed class ShellViewModel : Observable
             Apps.Add(app);
         }
 
+        var setAside = SetAsideStoredNotes();
+
         RebuildLibrary();
         RefreshAdapters();
         ThemeManager.Apply(_settings.Theme);
@@ -809,6 +842,11 @@ public sealed class ShellViewModel : Observable
         ProcessCatalog.RefreshStates(Apps);
         RaiseAllSettings();
         RebuildLog();
+
+        if (setAside)
+        {
+            await SaveAsync();
+        }
 
         if (_settings.BrowserBridgeEnabled)
         {
@@ -860,7 +898,7 @@ public sealed class ShellViewModel : Observable
         try
         {
             BusyMessage = "Starting the tunnel";
-            var target = TunnelController.ResolveTarget(SelectedProfile, Profiles);
+            var target = ResolveTarget(SelectedProfile);
             var pinned = Profiles.Where(profile => profile.BrowserPinned).ToList();
             await _tunnel.ConnectAsync(SelectedProfile, target, _settings, [.. Apps], pinned);
         }
@@ -900,7 +938,7 @@ public sealed class ShellViewModel : Observable
         try
         {
             BusyMessage = "Checking the configuration";
-            var output = await _tunnel.ValidateAsync(TunnelController.ResolveTarget(SelectedProfile, Profiles), _settings, [.. Apps]);
+            var output = await _tunnel.ValidateAsync(ResolveTarget(SelectedProfile), _settings, [.. Apps]);
             await _host.AlertAsync("Configuration", "The core accepted this profile", output);
         }
         catch (Exception exception) when (IsExpected(exception))
@@ -1162,14 +1200,42 @@ public sealed class ShellViewModel : Observable
         {
             // The address a subscription lives at is often blocked by the network the tunnel is
             // there to get around, so it is fetched through the tunnel whenever one is up.
-            var entries = await _subscriptions.FetchAsync(subscription.Url, _tunnel.ProxyUri);
-            var replaced = ReplaceSubscriptionProfiles(subscription, entries);
+            var fetch = await _subscriptions.FetchAsync(subscription.Url, _tunnel.ProxyUri);
+            var import = SubscriptionImport.From(fetch.Entries);
+
+            subscription.Notes = [.. import.Notes];
+            subscription.ApplyUsage(fetch.Usage);
+
+            if (import.Notes.Count > 0)
+            {
+                AppLog.Write(
+                    LogCategory.Subscription,
+                    $"\"{subscription.Name}\": {import.Notes.Count} entr{(import.Notes.Count == 1 ? "y is" : "ies are")} the provider's notes, not servers, and stay out of the list: {string.Join(" · ", import.Notes)}");
+            }
+
+            // A response with notes and no servers is what a panel sends for an expired or used-up
+            // account, and sometimes by mistake. Either way the nodes already here stay: throwing
+            // them away would leave nothing to connect with if the provider recovers.
+            if (import.Nodes.Count == 0)
+            {
+                subscription.LastError = import.Notes.Count > 0
+                    ? $"The provider sent no servers, only notes: {string.Join(" · ", import.Notes)}"
+                    : "The provider sent no server RouteShield can read.";
+                AppLog.Write(LogCategory.Subscription, $"\"{subscription.Name}\" refresh kept the previous nodes — {subscription.LastError}");
+                return;
+            }
+
+            var replaced = ReplaceSubscriptionProfiles(subscription, import.Nodes);
 
             subscription.LastError = string.Empty;
             subscription.LastCount = replaced;
             subscription.LastUpdated = DateTimeOffset.Now;
 
-            AppLog.Write(LogCategory.Subscription, $"\"{subscription.Name}\" refreshed — {replaced} profile(s)");
+            AppLog.Write(
+                LogCategory.Subscription,
+                $"\"{subscription.Name}\" refreshed — {replaced} profile(s)" +
+                (import.Unreadable > 0 ? $", {import.Unreadable} unreadable entr{(import.Unreadable == 1 ? "y" : "ies")} skipped" : string.Empty) +
+                (subscription.UsageText is { Length: > 0 } usage ? $" · {usage}" : string.Empty));
         }
         catch (Exception exception) when (IsExpected(exception) || exception is HttpRequestException)
         {
@@ -1182,7 +1248,7 @@ public sealed class ShellViewModel : Observable
     /// Swaps a subscription's profiles for the freshly fetched list while keeping what the user
     /// attached to them: the selection, and which ones were pinned for the browser.
     /// </summary>
-    private int ReplaceSubscriptionProfiles(VpnSubscription subscription, IReadOnlyList<SubscriptionEntry> entries)
+    private int ReplaceSubscriptionProfiles(VpnSubscription subscription, IReadOnlyList<ImportedNode> nodes)
     {
         var selectedName = SelectedProfile?.Name;
         var owned = Profiles.Where(profile => profile.SubscriptionId == subscription.Id).ToList();
@@ -1193,28 +1259,16 @@ public sealed class ShellViewModel : Observable
             Profiles.Remove(profile);
         }
 
-        var added = 0;
-        foreach (var entry in entries)
+        foreach (var node in nodes)
         {
-            string format;
-            try
-            {
-                format = TunnelParser.Parse(entry.Config).FormatName;
-            }
-            catch (Exception exception) when (IsExpected(exception))
-            {
-                continue;
-            }
-
             Profiles.Add(new VpnProfile
             {
-                Name = entry.Name,
-                Format = format,
-                ConfigText = entry.Config,
+                Name = node.Name,
+                Format = node.Format,
+                ConfigText = node.Config,
                 SubscriptionId = subscription.Id,
-                BrowserPinned = pinnedNames.Contains(entry.Name)
+                BrowserPinned = pinnedNames.Contains(node.Name)
             });
-            added++;
         }
 
         if (SelectedProfile is null || !IsSelectable(SelectedProfile))
@@ -1222,7 +1276,64 @@ public sealed class ShellViewModel : Observable
             SelectedProfile = Profiles.FirstOrDefault(profile => profile.Name == selectedName) ?? Profiles.FirstOrDefault();
         }
 
-        return added;
+        return nodes.Count;
+    }
+
+    /// <summary>
+    /// Entries saved before notes were told apart from servers: a subscription's quota line kept
+    /// as a node. They move into the subscription's notes, and out of every automatic group.
+    /// </summary>
+    private bool SetAsideStoredNotes()
+    {
+        var moved = false;
+
+        foreach (var subscription in Subscriptions)
+        {
+            var notes = Profiles
+                .Where(profile => profile.SubscriptionId == subscription.Id && SubscriptionImport.IsNote(profile.ConfigText))
+                .ToList();
+
+            if (notes.Count == 0)
+            {
+                continue;
+            }
+
+            foreach (var note in notes)
+            {
+                Profiles.Remove(note);
+            }
+
+            subscription.Notes = [.. subscription.Notes.Union(notes.Select(note => note.Name), StringComparer.Ordinal)];
+            subscription.LastCount = Profiles.Count(profile => profile.SubscriptionId == subscription.Id);
+            moved = true;
+
+            AppLog.Write(
+                LogCategory.Subscription,
+                $"\"{subscription.Name}\": set aside {notes.Count} saved entr{(notes.Count == 1 ? "y" : "ies")} that {(notes.Count == 1 ? "is a note" : "are notes")} from the provider, not {(notes.Count == 1 ? "a server" : "servers")}: {string.Join(" · ", notes.Select(note => note.Name))}");
+        }
+
+        return moved;
+    }
+
+    /// <summary>
+    /// What the selected profile connects to. An automatic group is ordered by the last latency
+    /// test in the library, so the node the core leans on before its own test is a good one.
+    /// </summary>
+    private ConnectionTarget ResolveTarget(VpnProfile profile)
+    {
+        var lastDelays = new Dictionary<Guid, int?>();
+        foreach (var item in Library.Where(item => item.LatencyState is LatencyState.Measured or LatencyState.Failed))
+        {
+            lastDelays[item.Profile.Id] = item.LatencyState == LatencyState.Measured ? item.LatencyMilliseconds : null;
+        }
+
+        var resolved = TargetResolver.Resolve(profile, Profiles, lastDelays);
+        foreach (var line in resolved.LeftOut)
+        {
+            AppLog.Write(LogCategory.Config, line);
+        }
+
+        return resolved.Target;
     }
 
     private void RefreshAdapters()
@@ -1595,7 +1706,8 @@ public sealed class ShellViewModel : Observable
                          nameof(UptimeText), nameof(LatencyText), nameof(ThroughputText), nameof(ExitIpText),
                          nameof(ProbeFailure), nameof(CoreVersionText), nameof(KillSwitchStateText),
                          nameof(AppStateWord), nameof(BridgeSummary), nameof(SelectedProfileLabel),
-                         nameof(OutboundSummary), nameof(OutboundWarning), nameof(EngineSummary)
+                         nameof(OutboundSummary), nameof(OutboundWarning), nameof(EngineSummary),
+                         nameof(GroupHealthText), nameof(GroupWarning)
                      })
             {
                 Raise(property);

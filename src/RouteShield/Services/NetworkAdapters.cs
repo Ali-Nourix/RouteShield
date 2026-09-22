@@ -180,9 +180,11 @@ public static class NetworkAdapters
             }
             catch (SocketException exception) when (exception.SocketErrorCode is SocketError.NetworkUnreachable
                                                         or SocketError.HostUnreachable
-                                                        or SocketError.AddressNotAvailable)
+                                                        or SocketError.AddressNotAvailable
+                                                        or SocketError.AccessDenied)
             {
-                // The routing table has nothing for this destination on this adapter.
+                // The routing table has nothing for this destination on this adapter, or a
+                // filter owned by another VPN refuses to let the socket out on it at all.
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {

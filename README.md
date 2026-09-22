@@ -15,7 +15,9 @@ the tunnel; everything else keeps your own connection.
   HTTP/2, HTTPUpgrade, QUIC. Links that name no fingerprint imitate Chrome's TLS client hello.
 - **Automatic selection** — every subscription gets a *Fastest of …* entry. The core measures
   all of its nodes, carries traffic over the fastest, re-tests every three minutes and fails
-  over on its own when the chosen node dies, without dropping the tunnel.
+  over on its own when the chosen node dies, without dropping the tunnel. Every node is also
+  tested the moment the tunnel is up, so the group is on one that answers within a second or two,
+  and the dashboard says plainly when none does and what is most likely in the way.
 - **Anti-DPI handshakes** — optionally fragment every TLS handshake with the proxy server
   across several packets and TLS records, for networks that read the server name from the
   first packet.
@@ -29,7 +31,9 @@ the tunnel; everything else keeps your own connection.
   WireGuard and AmneziaWG profiles. WireSock works underneath the routing table, so it keeps
   per-application tunnelling working even while a corporate VPN in full-tunnel mode is connected.
 - **Subscriptions** — HTTPS subscription URLs, plain or Base64, refreshed on demand and
-  de-duplicated. URLs are sealed with DPAPI before they touch disk.
+  de-duplicated. The traffic left and the expiry the provider reports are shown beside each one,
+  and the entries a panel adds for them ("7.75 GB left") are kept as notes, never as nodes. URLs
+  are sealed with DPAPI before they touch disk.
 - **Application kill switch** — while the tunnel is up, the routed executables are blocked from
   reaching the internet over any physical adapter, so a core crash drops their traffic instead
   of leaking it.
@@ -76,7 +80,7 @@ Options pass straight through:
 
 ```cmd
 build.cmd -Runtime win-arm64
-build.cmd -Version 1.6.0
+build.cmd -Version 1.7.0
 ```
 
 ## Layout
@@ -138,6 +142,11 @@ RouteShield carries a tunnel with one of two programs.
 With the engine on *Automatic*, a WireGuard profile runs on WireSock when another VPN holds the
 default route or the profile is AmneziaWG, and everything else runs on sing-box.
 
+Only WireGuard can get underneath a VPN like that. VLESS, VMess, Trojan and the other stream
+protocols have to go through it, so they reach the internet only where the network behind that VPN
+lets them. When it refuses every node, the dashboard says so after the first test rather than
+showing a tunnel that looks connected.
+
 ## How the tunnel is put together
 
 RouteShield builds one sing-box configuration per connection:
@@ -145,7 +154,10 @@ RouteShield builds one sing-box configuration per connection:
 - The **proxy** is one node, or — for a *Fastest of …* entry — a `urltest` group holding every
   node of the subscription. The group tests each member against `generate_204` every three
   minutes, uses the fastest, and switches when the chosen one fails or a member is faster by a
-  clear margin; existing connections are left alone.
+  clear margin; existing connections are left alone. Until the core's first test is in, and for
+  as long as no test passes, the group carries traffic over its first member — so members are
+  ordered by the last latency test, and an entry pointing at no server (a provider's quota line
+  on 1.1.1.1, a loopback address, port 0 or 1) is never a member at all.
 - The core is told **which adapter to dial on** rather than asked to detect it. Detection
   follows the default route, which is exactly what another VPN takes over. The adapter is
   checked first — a VPN in full-tunnel mode leaves no route behind it, and a socket bound to a
