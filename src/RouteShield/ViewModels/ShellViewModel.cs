@@ -48,6 +48,8 @@ public sealed class ShellViewModel : Observable
     private readonly IUiHost _host;
     private readonly Dictionary<Guid, LibrarySection> _sections = [];
     private readonly Dictionary<Guid, (LatencyState State, int? Milliseconds, string? Failure)> _latencyMemory = [];
+    private readonly System.Collections.Concurrent.ConcurrentQueue<LogEntry> _pendingLog = new();
+    private int _logDrainScheduled;
 
     /// <summary>The "fastest of this subscription" entry per subscription; synthesised, never saved.</summary>
     private readonly Dictionary<Guid, VpnProfile> _autoProfiles = [];
@@ -875,6 +877,7 @@ public sealed class ShellViewModel : Observable
         await _tunnel.DisposeAsync();
         _subscriptions.Dispose();
         await SaveAsync();
+        AppLog.FlushFiles();
     }
 
     // ══ Tunnel actions ══
@@ -1717,23 +1720,60 @@ public sealed class ShellViewModel : Observable
         });
     }
 
+    /// <summary>
+    /// Queues the entry for the visible log. One pass at background priority takes everything that
+    /// arrived since the last, so a burst of core output costs the window one update rather than
+    /// one per line, and never outranks input or rendering.
+    /// </summary>
     private void OnLogEntry(LogEntry entry)
     {
-        Dispatch(() =>
+        _pendingLog.Enqueue(entry);
+        if (Interlocked.Exchange(ref _logDrainScheduled, 1) == 1)
         {
-            if (!Matches(entry))
-            {
-                return;
-            }
+            return;
+        }
 
-            VisibleLog.Add(entry);
-            while (VisibleLog.Count > AppLog.BufferLimit)
-            {
-                VisibleLog.RemoveAt(0);
-            }
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            DrainLog();
+        }
+        else
+        {
+            dispatcher.BeginInvoke(DispatcherPriority.Background, DrainLog);
+        }
+    }
 
-            Raise(nameof(LogBufferText));
-        });
+    private void DrainLog()
+    {
+        Volatile.Write(ref _logDrainScheduled, 0);
+
+        // Only the newest BufferLimit entries can stay on screen; older ones are not worth adding.
+        while (_pendingLog.Count > AppLog.BufferLimit && _pendingLog.TryDequeue(out _))
+        {
+        }
+
+        var added = false;
+        while (_pendingLog.TryDequeue(out var entry))
+        {
+            if (Matches(entry))
+            {
+                VisibleLog.Add(entry);
+                added = true;
+            }
+        }
+
+        if (!added)
+        {
+            return;
+        }
+
+        while (VisibleLog.Count > AppLog.BufferLimit)
+        {
+            VisibleLog.RemoveAt(0);
+        }
+
+        Raise(nameof(LogBufferText));
     }
 
     private static void Dispatch(Action action)

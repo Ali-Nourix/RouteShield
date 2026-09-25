@@ -44,7 +44,21 @@ public static class RuntimeConfigBuilder
     public const string GroupTestUrl = LatencyProbeConfigBuilder.TestUrl;
     public const string GroupTestInterval = "3m";
     public const string GroupIdleTimeout = "30m";
-    public const int GroupToleranceMilliseconds = 50;
+
+    /// <summary>
+    /// How much faster another member must measure before the group moves to it. Round trips
+    /// through a filtered network wander by more than 50 ms from one test to the next, and a
+    /// group that follows the noise changes its exit address every few minutes, which sites
+    /// that tie a login to an address answer with a new captcha or a sign-out.
+    /// </summary>
+    public const int GroupToleranceMilliseconds = 150;
+
+    /// <summary>
+    /// The core's log level. "info" writes three lines for every connection, a thousand a second
+    /// while a page loads, and the core stops accepting connections whenever whoever reads its
+    /// output falls behind. Warnings and errors, which say why a dial failed, are all that is kept.
+    /// </summary>
+    public const string CoreLogLevel = "warn";
 
     /// <summary>The ports a browser speaks QUIC on; HTTP/3 is always one of these.</summary>
     private static readonly int[] QuicPorts = [443, 80];
@@ -173,7 +187,7 @@ public static class RuntimeConfigBuilder
         {
             ["log"] = new JsonObject
             {
-                ["level"] = "info",
+                ["level"] = CoreLogLevel,
                 ["timestamp"] = false
             },
             ["dns"] = BuildDns(settings, carriesIpv6),

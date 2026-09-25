@@ -80,7 +80,7 @@ Options pass straight through:
 
 ```cmd
 build.cmd -Runtime win-arm64
-build.cmd -Version 1.7.0
+build.cmd -Version 1.7.1
 ```
 
 ## Layout
@@ -157,7 +157,11 @@ RouteShield builds one sing-box configuration per connection:
   clear margin; existing connections are left alone. Until the core's first test is in, and for
   as long as no test passes, the group carries traffic over its first member — so members are
   ordered by the last latency test, and an entry pointing at no server (a provider's quota line
-  on 1.1.1.1, a loopback address, port 0 or 1) is never a member at all.
+  on 1.1.1.1, a loopback address, port 0 or 1) is never a member at all. Between the core's own
+  rounds, RouteShield tests the member in use every 15 seconds: a node that dies is left within
+  seconds, and connections left hanging on it are closed so applications reconnect.
+- The core logs **warnings and errors only**. At "info" it writes three lines for every
+  connection, and a core whose output is not read in time stops accepting connections.
 - The core is told **which adapter to dial on** rather than asked to detect it. Detection
   follows the default route, which is exactly what another VPN takes over. The adapter is
   checked first — a VPN in full-tunnel mode leaves no route behind it, and a socket bound to a

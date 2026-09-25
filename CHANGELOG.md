@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.7.1
+
+### Fixed
+
+- **The core stalled whenever its log could not be written fast enough.** sing-box logged three
+  lines for every connection, up to a thousand a second while pages loaded, and RouteShield wrote
+  each line to two files by opening, appending to and closing them, on the thread that drains the
+  core's output. When that thread fell behind, which a virus scanner looking at every file close
+  makes likely, the pipe filled, and a core that cannot write its log stops accepting connections
+  until it can. Pages loaded in fits and starts. Against the real core, connections behind an
+  unread log pipe began timing out after the first hundred, where the same core with its log
+  drained answered 300 of 300. Now:
+  - the core logs warnings and errors only, which still say why a dial failed;
+  - the log files stay open, are written from memory once a second, and are rotated at 4 MB, with
+    the previous file kept and included in diagnostics bundles;
+  - the Diagnostics view takes new lines in one batch at background priority, so a burst of output
+    never outranks input or drawing.
+- **A dead node kept an automatic group down for up to three minutes.** The core re-tests its
+  members every three minutes, and until then keeps dialling the node it chose even after that node
+  has stopped answering. RouteShield now tests the chosen node on its own every 15 seconds. A failed
+  test makes the core choose again at once. When no other member has a recent pass, every member is
+  tested, at growing intervals while none answers. Connections still held open through the dead
+  node are closed, so applications reconnect instead of hanging. The exception is connections that
+  are still receiving data: then the node is alive, and a saturated link timed the test out.
+- **Automatic groups changed their exit address on noise.** A group moved to another member as soon
+  as that member measured 50 ms faster, and round trips through a filtered network drift by more
+  than that between tests. Sites that tie a login to an address answered with captchas and
+  sign-outs. The margin is now 150 ms.
+
 ## 1.7.0
 
 ### Fixed

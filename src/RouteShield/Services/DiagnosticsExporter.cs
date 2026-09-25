@@ -25,15 +25,15 @@ public static class DiagnosticsExporter
 
         File.WriteAllText(Path.Combine(staging, "system.txt"), DescribeEnvironment(), new UTF8Encoding(false));
 
-        foreach (var source in new[] { AppPaths.AppLog, AppPaths.CoreLog })
+        // The logs are open for writing while RouteShield runs; they are read shared, after the
+        // lines still in memory have been put on disk.
+        AppLog.FlushFiles();
+        foreach (var source in AppLog.Files.Where(File.Exists))
         {
-            if (File.Exists(source))
-            {
-                File.WriteAllText(
-                    Path.Combine(staging, Path.GetFileName(source)),
-                    AppLog.Redact(File.ReadAllText(source)),
-                    new UTF8Encoding(false));
-            }
+            File.WriteAllText(
+                Path.Combine(staging, Path.GetFileName(source)),
+                AppLog.Redact(ReadShared(source)),
+                new UTF8Encoding(false));
         }
 
         var target = Path.Combine(
@@ -50,6 +50,13 @@ public static class DiagnosticsExporter
 
         AppLog.Write(LogCategory.Settings, "Diagnostics bundle exported to the desktop");
         return target;
+    }
+
+    private static string ReadShared(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        return reader.ReadToEnd();
     }
 
     public static string AppVersion =>

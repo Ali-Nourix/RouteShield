@@ -550,6 +550,10 @@ public class RuntimeConfigBuilderTests
         Assert.Equal(RuntimeConfigBuilder.GroupTestUrl, group["url"]!.GetValue<string>());
         Assert.False(group["interrupt_exist_connections"]!.GetValue<bool>());
 
+        // Round trips through a filtered network wander by more than 50 ms between tests; a group
+        // that follows the noise keeps changing its exit address.
+        Assert.Equal(150, group["tolerance"]!.GetValue<int>());
+
         // Every member is placed where its type belongs and resolves its server locally.
         var members = root["outbounds"]!.AsArray().Concat(root["endpoints"]!.AsArray()).OfType<JsonObject>()
             .Where(node => node["tag"]!.GetValue<string>().StartsWith("auto-", StringComparison.Ordinal))
@@ -563,6 +567,16 @@ public class RuntimeConfigBuilderTests
         Assert.True(runtime.IsAutomatic);
         Assert.Equal("Tokyo relay", runtime.MemberName("auto-1"));
         Assert.Equal("auto-9", runtime.MemberName("auto-9"));
+    }
+
+    [Fact]
+    public void The_core_logs_warnings_and_errors_only()
+    {
+        // At "info" the core writes three lines for every connection, and stops accepting
+        // connections whenever whoever reads its output falls behind.
+        var root = Build(Fixtures.Settings());
+
+        Assert.Equal("warn", root["log"]!["level"]!.GetValue<string>());
     }
 
     [Fact]

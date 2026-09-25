@@ -40,6 +40,19 @@ public sealed class TunnelController : IAsyncDisposable
     /// <summary>A failing probe tests the whole group again, but not more often than this.</summary>
     private static readonly TimeSpan GroupRecheckInterval = TimeSpan.FromMinutes(2);
 
+    /// <summary>How often the node an automatic group is using is tested on its own.</summary>
+    private static readonly TimeSpan SelectionCheckInterval = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// When the chosen node fails and no other member has a recent pass, every member is tested,
+    /// first after this long and then at doubling gaps while none answers, up to the ceiling.
+    /// </summary>
+    private static readonly TimeSpan GroupRetestFloor = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan GroupRetestCeiling = TimeSpan.FromMinutes(5);
+
+    /// <summary>How long connections on a node that failed its test are watched for traffic before they are closed.</summary>
+    private static readonly TimeSpan LivenessWindow = TimeSpan.FromSeconds(2);
+
     private readonly CoreProcessService _core = new();
     private readonly WireSockEngine _wireSock = new();
     private readonly FirewallService _firewall = new();
@@ -61,10 +74,12 @@ public sealed class TunnelController : IAsyncDisposable
     private string? _boundInterface;
     private DateTimeOffset _lastGroupCheck;
     private DateTimeOffset? _lastProbeSuccess;
+    private TimeSpan _groupRetestGap = GroupRetestFloor;
+    private readonly SemaphoreSlim _groupCheckGate = new(1, 1);
 
     public TunnelController()
     {
-        _core.OutputReceived += line => AppLog.Write(LogCategory.Core, line);
+        _core.OutputReceived += line => AppLog.Write(LogCategory.Core, line, persist: false);
         _core.Exited += OnCoreExited;
         _wireSock.OutputReceived += line => AppLog.Write(LogCategory.Core, $"[wiresock] {line}");
         _wireSock.Exited += OnCoreExited;
@@ -450,7 +465,13 @@ public sealed class TunnelController : IAsyncDisposable
         StopProbing();
         var cancellation = new CancellationTokenSource();
         _probing = cancellation;
+        _groupRetestGap = GroupRetestFloor;
         _ = ProbeLoopAsync(proxy, runtime, cancellation.Token);
+
+        if (runtime is { IsAutomatic: true })
+        {
+            _ = WatchSelectionAsync(runtime, cancellation.Token);
+        }
     }
 
     private void StopProbing()
@@ -520,6 +541,26 @@ public sealed class TunnelController : IAsyncDisposable
     /// and says what is most likely in the way.
     /// </summary>
     private async Task CheckGroupAsync(RuntimeConfig runtime, CancellationToken cancellationToken)
+    {
+        // A test already running answers for every caller that arrives while it runs.
+        if (!await _groupCheckGate.WaitAsync(0, cancellationToken))
+        {
+            await _groupCheckGate.WaitAsync(cancellationToken);
+            _groupCheckGate.Release();
+            return;
+        }
+
+        try
+        {
+            await RunGroupCheckAsync(runtime, cancellationToken);
+        }
+        finally
+        {
+            _groupCheckGate.Release();
+        }
+    }
+
+    private async Task RunGroupCheckAsync(RuntimeConfig runtime, CancellationToken cancellationToken)
     {
         var started = DateTimeOffset.Now;
         _lastGroupCheck = started;
@@ -652,34 +693,195 @@ public sealed class TunnelController : IAsyncDisposable
     /// <summary>Asks the Clash API which member the automatic group is using, so the dashboard can name it.</summary>
     private async Task RefreshGroupSelectionAsync(RuntimeConfig runtime, CancellationToken cancellationToken)
     {
+        if (await ReadSelectionAsync(runtime, cancellationToken) is not { } tag)
+        {
+            return;
+        }
+
+        var name = runtime.MemberName(tag);
+        if (name != GroupSelection)
+        {
+            GroupSelection = name;
+            AppLog.Write(LogCategory.Network, $"Automatic selection is using \"{name}\"");
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>The tag of the member the group is carrying traffic over; null before it has chosen, or when the API does not answer.</summary>
+    private async Task<string?> ReadSelectionAsync(RuntimeConfig runtime, CancellationToken cancellationToken)
+    {
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(runtime.ControlUri, $"proxies/{RuntimeConfigBuilder.ProxyTag}"));
-            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", runtime.ControlSecret);
-
+            using var request = Authorized(runtime, HttpMethod.Get, $"proxies/{RuntimeConfigBuilder.ProxyTag}");
             using var response = await _control.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                return;
+                return null;
             }
 
-            using var document = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-            if (document.RootElement.TryGetProperty("now", out var now) && now.GetString() is { Length: > 0 } tag)
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            return document.RootElement.TryGetProperty("now", out var now) && now.GetString() is { Length: > 0 } tag ? tag : null;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException or IOException
+                                          && !cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Keeps an automatic group on a node that answers. The core re-tests its members every few
+    /// minutes, and until then keeps dialling the node it chose even after that node has died,
+    /// so every page fails in the meantime. Testing the chosen node on its own every few seconds
+    /// closes that gap: a failed test makes the core choose again at once, and connections still
+    /// held open through the dead node are closed, so applications reconnect instead of hanging.
+    /// </summary>
+    private async Task WatchSelectionAsync(RuntimeConfig runtime, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
             {
-                var name = runtime.MemberName(tag);
-                if (name != GroupSelection)
+                await Task.Delay(SelectionCheckInterval, cancellationToken);
+                await CheckSelectionAsync(runtime, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task CheckSelectionAsync(RuntimeConfig runtime, CancellationToken cancellationToken)
+    {
+        if (await ReadSelectionAsync(runtime, cancellationToken) is not { } selected)
+        {
+            return;
+        }
+
+        var check = await CheckMemberAsync(runtime, new GroupMember(selected, runtime.MemberName(selected)), cancellationToken);
+        if (check.Answered)
+        {
+            return;
+        }
+
+        AppLog.Write(LogCategory.Network, $"\"{check.Name}\" stopped answering ({(check.Failure ?? "no answer").ToLowerInvariant()}); choosing another node.");
+
+        // The failed test has already made the core choose again among the members that passed
+        // their last test. When none has, every member is tested now, less often while none answers.
+        var next = await ReadSelectionAsync(runtime, cancellationToken);
+        if ((next is null || next == selected) && DateTimeOffset.Now - _lastGroupCheck >= _groupRetestGap)
+        {
+            await CheckGroupAsync(runtime, cancellationToken);
+            _groupRetestGap = GroupHealth is { Answering: > 0 }
+                ? GroupRetestFloor
+                : TimeSpan.FromTicks(Math.Min(_groupRetestGap.Ticks * 2, GroupRetestCeiling.Ticks));
+            next = await ReadSelectionAsync(runtime, cancellationToken);
+        }
+
+        if (next is null || next == selected)
+        {
+            return;
+        }
+
+        var closed = await CloseStalledConnectionsAsync(runtime, selected, cancellationToken);
+        AppLog.Write(
+            LogCategory.Network,
+            closed switch
+            {
+                null => $"Moved to \"{runtime.MemberName(next)}\"; \"{check.Name}\" is still carrying traffic, so its connections stay open.",
+                0 => $"Moved to \"{runtime.MemberName(next)}\".",
+                _ => $"Moved to \"{runtime.MemberName(next)}\" and closed {closed} connection(s) left hanging on \"{check.Name}\"."
+            });
+
+        await RefreshGroupSelectionAsync(runtime, cancellationToken);
+        await MeasureOnceAsync(runtime.ProxyUri, runtime, cancellationToken);
+    }
+
+    /// <summary>
+    /// Closes the connections still carried by a member that failed its test, so the applications
+    /// holding them reconnect through the member the group moved to. A test can fail on a node
+    /// that works — a saturated link times the test out — so the connections are watched for a
+    /// moment first; if any of them is still receiving data the node is alive and nothing is
+    /// closed, and null is returned.
+    /// </summary>
+    private async Task<int?> CloseStalledConnectionsAsync(RuntimeConfig runtime, string memberTag, CancellationToken cancellationToken)
+    {
+        var before = await ReadConnectionsAsync(runtime, memberTag, cancellationToken);
+        if (before.Count == 0)
+        {
+            return 0;
+        }
+
+        await Task.Delay(LivenessWindow, cancellationToken);
+        var after = await ReadConnectionsAsync(runtime, memberTag, cancellationToken);
+
+        if (after.Any(pair => before.TryGetValue(pair.Key, out var earlier) && pair.Value > earlier))
+        {
+            return null;
+        }
+
+        var closed = 0;
+        foreach (var id in after.Keys)
+        {
+            try
+            {
+                using var request = Authorized(runtime, HttpMethod.Delete, $"connections/{Uri.EscapeDataString(id)}");
+                using var response = await _control.SendAsync(request, cancellationToken);
+                closed += response.IsSuccessStatusCode ? 1 : 0;
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException
+                                              && !cancellationToken.IsCancellationRequested)
+            {
+            }
+        }
+
+        return closed;
+    }
+
+    /// <summary>The open connections whose chain runs through the member, with the bytes each has received so far.</summary>
+    private async Task<Dictionary<string, long>> ReadConnectionsAsync(RuntimeConfig runtime, string memberTag, CancellationToken cancellationToken)
+    {
+        var connections = new Dictionary<string, long>(StringComparer.Ordinal);
+        try
+        {
+            using var request = Authorized(runtime, HttpMethod.Get, "connections");
+            using var response = await _control.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return connections;
+            }
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            if (!document.RootElement.TryGetProperty("connections", out var list) || list.ValueKind != JsonValueKind.Array)
+            {
+                return connections;
+            }
+
+            foreach (var connection in list.EnumerateArray())
+            {
+                var throughMember = connection.TryGetProperty("chains", out var chains)
+                                    && chains.ValueKind == JsonValueKind.Array
+                                    && chains.EnumerateArray().Any(hop => hop.GetString() == memberTag);
+
+                if (throughMember && connection.TryGetProperty("id", out var id) && id.GetString() is { Length: > 0 } key)
                 {
-                    GroupSelection = name;
-                    AppLog.Write(LogCategory.Network, $"Automatic selection is using \"{name}\"");
-                    Changed?.Invoke();
+                    connections[key] = connection.TryGetProperty("download", out var download) && download.TryGetInt64(out var bytes) ? bytes : 0;
                 }
             }
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException or IOException
                                           && !cancellationToken.IsCancellationRequested)
         {
-            // The selection is a courtesy on the dashboard; a missed read is not a tunnel problem.
         }
+
+        return connections;
+    }
+
+    private static HttpRequestMessage Authorized(RuntimeConfig runtime, HttpMethod method, string path)
+    {
+        var request = new HttpRequestMessage(method, new Uri(runtime.ControlUri, path));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", runtime.ControlSecret);
+        return request;
     }
 
     /// <summary>

@@ -177,24 +177,11 @@ public sealed class CoreProcessService : IAsyncDisposable
             return;
         }
 
+        // This runs on the thread that drains the core's output pipe, and nothing on it may wait
+        // for the disk: the core blocks on a full pipe, and every connection it is opening with it.
         var clean = AppLog.Redact(line.Trim());
-        MirrorToCoreLog(clean);
+        AppLog.AppendCoreLog(clean);
         OutputReceived?.Invoke(clean);
-    }
-
-    private static void MirrorToCoreLog(string line)
-    {
-        try
-        {
-            AppPaths.Ensure();
-            File.AppendAllText(AppPaths.CoreLog, $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff} {line}{Environment.NewLine}");
-        }
-        catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
-        {
-        }
     }
 
     private static void TryDelete(string? path)

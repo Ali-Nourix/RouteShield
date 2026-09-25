@@ -39,6 +39,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs args)
     {
+        AppLog.FlushFiles();
         _instanceLock?.Dispose();
         base.OnExit(args);
     }
@@ -46,6 +47,7 @@ public partial class App : Application
     private static void OnUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs args)
     {
         AppLog.Write(LogCategory.Settings, $"Unhandled error: {args.Exception}");
+        AppLog.FlushFiles();
 
         MessageBox.Show(
             args.Exception.Message,
