@@ -2,6 +2,8 @@
 
 # RouteShield
 
+[English](README.md) · [فارسی](README.fa.md)
+
 کنترل‌کنندهٔ تونل تفکیک‌شده (split tunnel) برای ویندوز ۱۰ و ۱۱، بر پایهٔ هستهٔ رسمی
 [sing-box](https://github.com/SagerNet/sing-box). شما انتخاب می‌کنید کدام برنامه‌ها از تونل
 عبور کنند؛ بقیهٔ ویندوز روی اتصال خودتان می‌ماند.
