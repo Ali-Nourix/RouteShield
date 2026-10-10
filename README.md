@@ -6,7 +6,7 @@
 
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Ali-Nourix/RouteShield)
 [![Latest Release](https://img.shields.io/github/v/release/Ali-Nourix/RouteShield?style=for-the-badge&logo=github&label=Release)](https://github.com/Ali-Nourix/RouteShield/releases/latest)
-[![License](https://img.shields.io/badge/License-MIT-2F80ED?style=for-the-badge)](LICENSE)
+[![License](https://img.shields.io/badge/License-GPL--3.0-46A171?style=for-the-badge)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/Ali-Nourix/RouteShield/ci.yml?style=for-the-badge&label=CI)](https://github.com/Ali-Nourix/RouteShield/actions/workflows/ci.yml)
 
 RouteShield is a Windows VPN controller built around the official [sing-box](https://github.com/SagerNet/sing-box) core. Choose which applications use the tunnel, which bypass it, or route the entire system. It also supports browser-level routing through companion Firefox and Chrome extensions.
@@ -213,5 +213,5 @@ RouteShield builds one sing-box configuration per connection:
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE). Third-party components are listed in
+GPL-3.0 — see [LICENSE](LICENSE). Third-party components are listed in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
