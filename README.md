@@ -1,10 +1,27 @@
 # RouteShield
 
-A split-tunnel VPN controller for Windows 10 and 11, powered by the official
-[sing-box](https://github.com/SagerNet/sing-box) core. You pick which applications go through
-the tunnel; everything else keeps your own connection.
+**Per-application VPN routing for Windows 10 and Windows 11.**
 
-[فارسی](README.fa.md) · [Changelog](CHANGELOG.md) · [Security model](SECURITY.md)
+[![Build](https://github.com/Ali-Nourix/RouteShield/actions/workflows/ci.yml/badge.svg)](https://github.com/Ali-Nourix/RouteShield/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/Ali-Nourix/RouteShield?display_name=tag&sort=semver)](https://github.com/Ali-Nourix/RouteShield/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4)](https://github.com/Ali-Nourix/RouteShield)
+
+RouteShield is a Windows VPN controller built around the official [sing-box](https://github.com/SagerNet/sing-box) core. Choose which applications use the tunnel, which bypass it, or route the entire system. It also supports browser-level routing through companion Firefox and Chrome extensions.
+
+[فارسی](README.fa.md) · [Releases](https://github.com/Ali-Nourix/RouteShield/releases) · [Changelog](CHANGELOG.md) · [Security model](SECURITY.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+
+## Contents
+
+- [Features](#what-it-does)
+- [Install](#install)
+- [Build from source](#build-from-source)
+- [Project layout](#layout)
+- [Tests](#tests)
+- [Browser extensions](#browser-extension)
+- [Tunnel architecture](#how-the-tunnel-is-put-together)
+- [Engines](#engines)
+- [License](#licence)
 
 ## What it does
 
