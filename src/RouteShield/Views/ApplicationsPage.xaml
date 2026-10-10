@@ -27,7 +27,7 @@
         </views:PageHeader>
 
         <Border Grid.Row="1" Margin="0,22,0,0" Padding="18,14" CornerRadius="{StaticResource RadiusMd}"
-                Background="{StaticResource SurfaceBrush}">
+                Background="{DynamicResource SurfaceBrush}">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Style="{StaticResource Kicker}" VerticalAlignment="Center" Margin="0,0,20,0"
                            ui:Typo.Tracked="MODE" />
@@ -41,13 +41,13 @@
         </Border>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,14,0,0">
-            <Ellipse Width="7" Height="7" Margin="0,0,10,0" VerticalAlignment="Center"
-                     Fill="{StaticResource AccentBrush}" />
+            <Border Width="8" Height="8" CornerRadius="2" Margin="0,0,10,0" VerticalAlignment="Center"
+                    Background="{DynamicResource AccentBrush}" />
             <TextBlock Style="{StaticResource HelpText}" VerticalAlignment="Center"
                        Text="The application kill switch is enforced only while Selected applications mode is active." />
         </StackPanel>
 
-        <Border Grid.Row="3" Margin="0,22,0,0" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,2"
+        <Border Grid.Row="3" Margin="0,22,0,0" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2"
                 Padding="0,0,0,9">
             <Grid>
                 <TextBlock Style="{StaticResource SectionTitle}" Text="Protected executables" />
@@ -89,19 +89,19 @@
                                 <ColumnDefinition Width="110" />
                             </Grid.ColumnDefinitions>
 
-                            <Ellipse Width="8" Height="8" Margin="10,0,0,0" HorizontalAlignment="Left"
-                                     VerticalAlignment="Center">
-                                <Ellipse.Style>
-                                    <Style TargetType="Ellipse">
-                                        <Setter Property="Fill" Value="{StaticResource Neutral400Brush}" />
+                            <Border Width="9" Height="9" CornerRadius="2" Margin="10,0,0,0" HorizontalAlignment="Left"
+                                    VerticalAlignment="Center" ToolTip="{Binding StateLabel}">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="{DynamicResource Neutral400Brush}" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsRunning}" Value="True">
-                                                <Setter Property="Fill" Value="{StaticResource AccentBrush}" />
+                                                <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
-                                </Ellipse.Style>
-                            </Ellipse>
+                                </Border.Style>
+                            </Border>
 
                             <TextBlock Grid.Column="1" Style="{StaticResource RowLabel}" VerticalAlignment="Center"
                                        TextTrimming="CharacterEllipsis" Text="{Binding DisplayName}" />

@@ -1,3 +1,5 @@
+using RouteShield.Tunnels;
+
 namespace RouteShield.Tests;
 
 /// <summary>Sample inputs shared by the parser and config tests. The keys are throwaway values.</summary>
@@ -34,6 +36,40 @@ internal static class Fixtures
         PersistentKeepalive = 25
         """;
 
+    /// <summary>A peer with no address of its own beyond IPv4, and no MTU declared.</summary>
+    public const string WireGuardIpv4Only = """
+        [Interface]
+        PrivateKey = /TjUAUe2m107+7gwTN9jNfWz/FEUrEacrL37qj64/D0=
+        Address = 10.8.0.2/32
+
+        [Peer]
+        PublicKey = /TjUAUe2m107+7gwTN9jNfWz/FEUrEacrL37qj64/D0=
+        AllowedIPs = 0.0.0.0/0
+        Endpoint = wg.example.net:51820
+        """;
+
+    /// <summary>WireGuard with AmneziaWG obfuscation, and a WireSock directive left over from another client.</summary>
+    public const string AmneziaWg = """
+        [Interface]
+        PrivateKey = /TjUAUe2m107+7gwTN9jNfWz/FEUrEacrL37qj64/D0=
+        Address = 10.8.0.2/32
+        DNS = 1.1.1.1
+        MTU = 1420
+        Jc = 4
+        Jmin = 40
+        Jmax = 70
+        S1 = 21
+        S2 = 58
+        H1 = 1
+
+        [Peer]
+        PublicKey = /TjUAUe2m107+7gwTN9jNfWz/FEUrEacrL37qj64/D0=
+        AllowedIPs = 0.0.0.0/0
+        Endpoint = wg.example.net:51820
+        #@ws:AllowedApps = old.exe
+        DisallowedApps = stale
+        """;
+
     public const string SingBoxJson = """
         {
           "outbounds": [
@@ -49,6 +85,21 @@ internal static class Fixtures
         }
         """;
 
+    public const string Hysteria2 =
+        "hysteria2://letmein@hy.example.net:8443/?sni=hy.example.net&obfs=salamander&obfs-password=salt" +
+        "&insecure=1&up=50&down=200&mport=20000-30000,443#Hop";
+
+    public const string Tuic =
+        "tuic://b1f0e4c2-0000-4000-8000-000000009ac4:pw@tuic.example.net:443" +
+        "?congestion_control=bbr&udp_relay_mode=native&alpn=h3&sni=tuic.example.net&allow_insecure=1#Quic";
+
+    public const string AnyTls =
+        "anytls://pw@any.example.net:443?sni=any.example.net#Any";
+
+    public const string VlessGrpc =
+        "vless://b1f0e4c2-0000-4000-8000-000000009ac4@grpc.example.net:443" +
+        "?type=grpc&security=tls&serviceName=svc&sni=grpc.example.net#Grpc";
+
     public static AppTarget[] Apps =>
     [
         new() { DisplayName = "Firefox", Path = @"C:\Program Files\Mozilla Firefox\firefox.exe" },
@@ -59,11 +110,22 @@ internal static class Fixtures
         RouteMode mode = RouteMode.SelectedAppsOnly,
         bool dnsProtection = true,
         bool ipv6 = true,
-        bool allowLan = false) => new()
+        bool allowLan = false,
+        bool tlsFragment = false) => new()
         {
             RouteMode = mode,
             DnsProtection = dnsProtection,
             Ipv6Protection = ipv6,
-            AllowLan = allowLan
+            AllowLan = allowLan,
+            TlsFragment = tlsFragment
         };
+
+    /// <summary>Three nodes of one subscription, the way the app hands them to an automatic group.</summary>
+    public static ConnectionTarget AutomaticGroup() => ConnectionTarget.Automatic(
+        "Auto · Provider",
+        [
+            ("Frankfurt", TunnelParser.Parse(VlessReality)),
+            ("Tokyo relay", TunnelParser.Parse(Trojan)),
+            ("Home", TunnelParser.Parse(WireGuardConf))
+        ]);
 }

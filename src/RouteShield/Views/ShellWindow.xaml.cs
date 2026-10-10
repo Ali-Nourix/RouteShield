@@ -89,6 +89,8 @@ public partial class ShellWindow : Window, IUiHost
         return picker.ShowDialog() == true ? picker.Selected : null;
     }
 
+    public SubscriptionEdit? EditSubscription(VpnSubscription? existing) => SubscriptionWindow.Prompt(this, existing);
+
     // ══ Lifecycle ══
 
     private async void OnLoaded(object sender, RoutedEventArgs args)

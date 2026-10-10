@@ -7,6 +7,8 @@
     <AssemblyName>RouteShield.Core</AssemblyName>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Symbols live in the assembly, so publishing leaves no loose .pdb in the package. -->
+    <DebugType>embedded</DebugType>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="RouteShield.Core.Tests" />

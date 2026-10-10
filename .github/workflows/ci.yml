@@ -37,6 +37,37 @@ jobs:
       - name: Test
         run: dotnet test tests/RouteShield.Core.Tests/RouteShield.Core.Tests.csproj -c Release --logger "console;verbosity=normal"
 
+  addons:
+    name: Browser add-ons
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Stage the Firefox add-on exactly as the build script does (shared files beside the
+      # browser's own), then run Mozilla's linter over it: the same check AMO applies on upload.
+      - name: Stage the Firefox add-on
+        run: |
+          set -euo pipefail
+          mkdir -p staged/firefox
+          cp -r extension/shared staged/firefox/shared
+          cp extension/firefox/* staged/firefox/
+          node --check staged/firefox/background.js
+          node --check staged/firefox/shared/bridge.js
+          node --check staged/firefox/shared/popup.js
+
+      - name: Lint with web-ext
+        run: npx --yes web-ext@8 lint --source-dir staged/firefox --self-hosted --no-config-discovery
+
+      - name: Check the Chrome scripts
+        run: |
+          set -euo pipefail
+          node --check extension/chrome/background.js
+          node -e "JSON.parse(require('fs').readFileSync('extension/chrome/manifest.json','utf8')); console.log('chrome manifest ok')"
+
   app:
     name: Windows app
     runs-on: windows-latest

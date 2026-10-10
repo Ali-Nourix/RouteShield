@@ -6,14 +6,14 @@
         SizeToContent="Height" Width="520"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        FontFamily="{StaticResource BodyFont}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource BodyFont}" Foreground="{DynamicResource TextBrush}"
         UseLayoutRounding="True">
 
-    <Border Background="{StaticResource BgBrush}" CornerRadius="{StaticResource RadiusLg}" Padding="28,26"
-            Effect="{StaticResource ShadowLg}" Margin="24" MouseLeftButtonDown="OnDragWindow">
+    <Border Background="{DynamicResource BgBrush}" CornerRadius="{StaticResource RadiusLg}" Padding="28,26"
+            Effect="{DynamicResource ShadowLg}" Margin="24" MouseLeftButtonDown="OnDragWindow">
         <StackPanel>
             <TextBlock x:Name="KickerText" Style="{StaticResource Kicker}"
-                       Foreground="{StaticResource AccentBrush}" />
+                       Foreground="{DynamicResource AccentBrush}" />
             <TextBlock x:Name="TitleText" Style="{StaticResource BaseText}" Margin="0,12,0,0"
                        FontFamily="{StaticResource HeadingFont}" FontSize="26" TextWrapping="Wrap" />
             <TextBlock x:Name="BodyText" Style="{StaticResource HelpText}" Margin="0,14,0,0" FontSize="13"

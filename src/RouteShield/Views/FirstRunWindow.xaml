@@ -7,14 +7,14 @@
         Width="980" Height="620" ResizeMode="NoResize"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        FontFamily="{StaticResource BodyFont}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource BodyFont}" Foreground="{DynamicResource TextBrush}"
         UseLayoutRounding="True">
 
     <Window.Resources>
         <Style x:Key="StepOrdinal" TargetType="TextBlock" BasedOn="{StaticResource BaseText}">
             <Setter Property="FontFamily" Value="{StaticResource HeadingFont}" />
             <Setter Property="FontSize" Value="11" />
-            <Setter Property="Foreground" Value="{StaticResource Neutral500Brush}" />
+            <Setter Property="Foreground" Value="{DynamicResource Neutral500Brush}" />
             <Setter Property="Margin" Value="0,2,18,0" />
         </Style>
         <Style x:Key="StepTitle" TargetType="TextBlock" BasedOn="{StaticResource BaseText}">
@@ -23,32 +23,32 @@
         </Style>
     </Window.Resources>
 
-    <Border Background="{StaticResource BgBrush}" CornerRadius="{StaticResource RadiusLg}" Margin="18"
-            Effect="{StaticResource ShadowLg}" ClipToBounds="True">
+    <Border Background="{DynamicResource BgBrush}" CornerRadius="{StaticResource RadiusLg}" Margin="18"
+            Effect="{DynamicResource ShadowLg}" ClipToBounds="True">
         <Grid MouseLeftButtonDown="OnDragWindow">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="0.85*" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Border Background="{StaticResource TextBrush}" Padding="40,44">
+            <Border Background="{DynamicResource TextBrush}" Padding="40,44">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Bottom">
-                        <Border Height="2" Background="{StaticResource Neutral800Brush}" Margin="0,0,0,16" />
-                        <TextBlock Style="{StaticResource Kicker}" Foreground="{StaticResource Neutral500Brush}"
+                        <Border Height="2" Background="{DynamicResource Neutral800Brush}" Margin="0,0,0,16" />
+                        <TextBlock Style="{StaticResource Kicker}" Foreground="{DynamicResource Neutral500Brush}"
                                    TextWrapping="Wrap"
                                    Text="{Binding VersionLine, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource Tracked}}" />
                     </StackPanel>
 
                     <StackPanel VerticalAlignment="Center">
                         <views:BrandMark Width="44" Height="52" HorizontalAlignment="Left"
-                                         ShieldBrush="{StaticResource BgBrush}"
-                                         RouteBrush="{StaticResource AccentBrush}" />
+                                         ShieldBrush="{DynamicResource BgBrush}"
+                                         RouteBrush="{DynamicResource AccentBrush}" />
                         <TextBlock Margin="0,28,0,0" FontFamily="{StaticResource HeadingFont}" FontSize="40"
-                                   LineHeight="44" LineStackingStrategy="BlockLineHeight" Foreground="{StaticResource BgBrush}"
+                                   LineHeight="44" LineStackingStrategy="BlockLineHeight" Foreground="{DynamicResource BgBrush}"
                                    Text="Route&#x0a;only what&#x0a;you choose." />
                         <TextBlock Margin="0,20,0,0" FontSize="13" TextWrapping="Wrap"
-                                   Foreground="{StaticResource Neutral400Brush}"
+                                   Foreground="{DynamicResource Neutral400Brush}"
                                    Text="RouteShield sends the applications you pick through the sing-box core and leaves the rest of Windows on your own connection." />
                     </StackPanel>
                 </DockPanel>
@@ -68,7 +68,7 @@
                         <TextBlock Margin="0,12,0,0" FontFamily="{StaticResource HeadingFont}" FontSize="27"
                                    LineHeight="31" LineStackingStrategy="BlockLineHeight" Text="Three things before&#x0a;your first tunnel" />
 
-                        <Border Margin="0,28,0,0" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1"
+                        <Border Margin="0,28,0,0" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1"
                                 Padding="0,0,0,18">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -87,7 +87,7 @@
                             </Grid>
                         </Border>
 
-                        <Border Margin="0,18,0,0" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1"
+                        <Border Margin="0,18,0,0" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1"
                                 Padding="0,0,0,18">
                             <Grid>
                                 <Grid.ColumnDefinitions>

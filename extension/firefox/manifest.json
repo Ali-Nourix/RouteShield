@@ -1,0 +1,45 @@
+{
+  "manifest_version": 2,
+  "name": "RouteShield",
+  "version": "1.7.1",
+  "description": "Send each Firefox tab through a different RouteShield profile, or through no VPN at all.",
+  "homepage_url": "https://github.com/Ali-Nourix/RouteShield",
+  "icons": {
+    "16": "shared/icons/icon-16.png",
+    "32": "shared/icons/icon-32.png",
+    "48": "shared/icons/icon-48.png",
+    "128": "shared/icons/icon-128.png"
+  },
+  "permissions": [
+    "proxy",
+    "tabs",
+    "webRequest",
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": [
+      "shared/bridge.js",
+      "background.js"
+    ],
+    "persistent": true
+  },
+  "browser_action": {
+    "default_title": "RouteShield",
+    "default_popup": "shared/popup.html",
+    "default_icon": {
+      "16": "shared/icons/icon-16.png",
+      "32": "shared/icons/icon-32.png"
+    }
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "routeshield@nourix.dev",
+      "strict_min_version": "115.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    }
+  }
+}

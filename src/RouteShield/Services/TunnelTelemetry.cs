@@ -18,12 +18,13 @@ public sealed class NetworkProbe
 {
     private const string ExitAddressService = "https://api.ipify.org";
 
-    public async Task<TunnelProbe> RunAsync(Uri proxy, CancellationToken cancellationToken = default)
+    /// <param name="proxy">The core's loopback proxy; null when RouteShield's own traffic is already tunnelled.</param>
+    public async Task<TunnelProbe> RunAsync(Uri? proxy, CancellationToken cancellationToken = default)
     {
         using var handler = new HttpClientHandler
         {
-            Proxy = new WebProxy(proxy),
-            UseProxy = true
+            Proxy = proxy is null ? null : new WebProxy(proxy),
+            UseProxy = proxy is not null
         };
 
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(12) };

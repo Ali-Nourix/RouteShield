@@ -14,6 +14,36 @@ public sealed class SettingsStore
         Converters = { new JsonStringEnumConverter() }
     };
 
+    /// <summary>
+    /// Reads only the saved theme, synchronously and without touching any secret, so the first
+    /// window can open in the right palette instead of flashing light before settings load.
+    /// </summary>
+    public static AppTheme PeekTheme()
+    {
+        try
+        {
+            if (!File.Exists(AppPaths.SettingsFile))
+            {
+                return AppTheme.System;
+            }
+
+            using var document = JsonDocument.Parse(File.ReadAllText(AppPaths.SettingsFile, Encoding.UTF8));
+            if (document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("theme", out var theme)
+                && theme.ValueKind == JsonValueKind.String
+                && Enum.TryParse<AppTheme>(theme.GetString(), ignoreCase: true, out var parsed))
+            {
+                return parsed;
+            }
+        }
+        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)
+        {
+            // LoadAsync reports and quarantines a broken file; here the default palette is enough.
+        }
+
+        return AppTheme.System;
+    }
+
     public async Task<AppSettings> LoadAsync()
     {
         AppPaths.Ensure();

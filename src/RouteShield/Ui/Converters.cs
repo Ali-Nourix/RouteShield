@@ -27,6 +27,13 @@ public sealed class BoolToVisibilityConverter : IValueConverter
         Binding.DoNothing;
 }
 
+public sealed class NotConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value is not true;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => value is not true;
+}
+
 public sealed class PresenceToVisibilityConverter : IValueConverter
 {
     public bool Invert { get; set; }

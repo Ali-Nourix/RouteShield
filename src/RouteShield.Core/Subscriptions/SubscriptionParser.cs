@@ -26,7 +26,7 @@ public static class SubscriptionParser
         if (entries.Length == 0)
         {
             throw new FormatException(
-                "No VLESS, VMess, Trojan, Shadowsocks, WireGuard or sing-box configuration was found in the response.");
+                "No VLESS, VMess, Trojan, Shadowsocks, Hysteria2, TUIC, AnyTLS, WireGuard or sing-box configuration was found in the response.");
         }
 
         return entries;
@@ -84,11 +84,12 @@ public static class SubscriptionParser
         .Replace("\r", string.Empty)
         .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
+    /// <summary>Every share-link scheme the profile parser reads; a scheme missing here is dropped from a subscription unseen.</summary>
+    private static readonly string[] LinkSchemes =
+        ["vless://", "vmess://", "trojan://", "ss://", "hysteria2://", "hy2://", "tuic://", "anytls://"];
+
     private static bool LooksLikeConfig(string value) =>
-        value.StartsWith("vless://", StringComparison.OrdinalIgnoreCase) ||
-        value.StartsWith("vmess://", StringComparison.OrdinalIgnoreCase) ||
-        value.StartsWith("trojan://", StringComparison.OrdinalIgnoreCase) ||
-        value.StartsWith("ss://", StringComparison.OrdinalIgnoreCase) ||
+        LinkSchemes.Any(scheme => value.StartsWith(scheme, StringComparison.OrdinalIgnoreCase)) ||
         value.TrimStart().StartsWith('{') ||
         value.Contains("[Interface]", StringComparison.OrdinalIgnoreCase);
 
