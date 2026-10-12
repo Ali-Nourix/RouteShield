@@ -54,7 +54,7 @@ jobs:
 
   android:
     name: Android preview and unsigned release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4, pinned
@@ -74,7 +74,7 @@ jobs:
         working-directory: android
         run: |
           set -o pipefail
-          sh gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDiagnostic :app:assembleRelease 2>&1 | tee "$RUNNER_TEMP/android-preview-build.log"
+          sh gradlew --stacktrace :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDiagnostic :app:assembleRelease 2>&1 | tee "$RUNNER_TEMP/android-preview-build.log"
       - name: Annotate preview build failures
         if: failure()
         run: python3 ci/scripts/android-failure-summary.py
@@ -104,7 +104,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.sign_android && github.ref == 'refs/heads/main'
     needs: [windows, android]
     environment: android-release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4, pinned
