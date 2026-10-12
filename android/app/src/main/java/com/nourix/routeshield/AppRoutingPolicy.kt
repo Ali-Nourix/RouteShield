@@ -5,7 +5,12 @@ import org.json.JSONObject
 /** Offline, exact package IDs only; nationality/name is never inferred from labels. */
 object AppRoutingPolicy {
     val domesticPackages = setOf("com.digikala", "cab.snapp.passenger", "cab.snapp.passenger.play",
-        "com.zoodfood.android", "com.sheypoor.mobile", "com.snapp_box.android", "ir.divar", "com.aparat")
+        "com.zoodfood.android", "com.sheypoor.mobile", "com.snapp_box.android", "ir.divar", "com.aparat",
+        "com.aparat.filimo", "com.mydigipay.app.android", "com.pintapin.pintapin",
+        "taxi.tap30.passenger.play", "taxi.tap30.driver", "ir.balad",
+        "ir.tgbs.peccharge", "com.adpdigital.mbs.ayande", "ir.nasim", "ir.torob", "o.com.torob.panel", "com.sibche.aspardproject.app",
+        "com.tosan.dara.sepah", "com.pmb.mobile", "com.samanpr.blu", "ir.bmi.bam.nativeweb",
+        "ir.omidbank", "com.bmelat.mobile", "com.bpm.sekeh", "com.isc.bsinew", "org.rajman.neshan.traffic.tehran.navigator")
     private fun strings(data:JSONObject,key:String):Set<String> = data.optJSONArray(key)?.let { a -> (0 until a.length()).map {a.getString(it)}.toSet() } ?: emptySet()
     fun enabled(data:JSONObject,pkg:String):Boolean {
         val manual=strings(data,"apps")

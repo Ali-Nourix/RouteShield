@@ -84,13 +84,13 @@
 <string name="active_profile">Active profile</string>
 <string name="nodes">Nodes</string>
 <string name="auto_short">Automatic</string>
-<string name="auto_detail">Prefer a responsive node without interrupting healthy sessions.</string>
+<string name="auto_detail">Select by measured HTTPS latency; recheck every minute. Stability preference limits needless changes. Not a bandwidth speed test.</string>
 <string name="show_more">Show more nodes</string>
-<string name="nodes_hint">A dash means unmeasured. Disconnect before changing the selected node.</string>
+<string name="nodes_hint">Switch nodes while connected; existing sessions may reconnect. A dash means unmeasured. Changing a profile group still requires Disconnect.</string>
 <string name="app_vpn_title">VPN for applications</string>
 <string name="app_vpn_detail">All switches start on. Turn one off to send only that app directly.</string>
 <string name="auto_iranian_apps">Automatically bypass known Iranian apps</string>
-<string name="auto_iranian_detail">A limited offline package list. Manual choices take priority; reconnect to apply.</string>
+<string name="auto_iranian_detail">An expanded, limited offline ID catalog. Manual choices take priority. Reconnect to apply. No label-based guesses or uploaded app inventory.</string>
 <string name="reset_app_policy">Reset: VPN for all</string>
 <string name="legacy_include">Your previous selected-only policy is preserved. Reset to enable all apps.</string>
 <string name="app_vpn_on">Using VPN</string>
@@ -107,4 +107,14 @@
 <string name="color_amber">Amber</string>
 <string name="color_slate">Slate</string>
 <string name="test_nodes_short">Test nodes</string>
+<string name="kill_switch">Kill Switch · Android protection</string>
+<string name="kill_active">Block connections without VPN: enabled (reported by Android).</string>
+<string name="kill_off">Block connections without VPN: off (reported by Android).</string>
+<string name="kill_unknown">System protection status unknown. Connect to read Android’s status.</string>
+<string name="kill_detail">Enable Always-on VPN and Block connections without VPN in Android settings. This also protects if RouteShield stops. Excluded apps may be blocked instead of connecting directly. Intentional Disconnect may leave internet blocked until lockdown is disabled.</string>
+<string name="kill_setup">Configure system Kill Switch</string>
+<string name="catalog_coverage">Known installed apps: %1$d · Offline catalog: %2$d IDs. Unknown apps stay on VPN.</string>
+<string name="degraded">Checking connection stability…</string>
+<string name="prefer_stability">Prefer stable automatic routes</string>
+<string name="stability_detail">On: tolerate 150 ms difference and ignore one transient probe failure after success. Off: prefer the lowest measured latency. Both keep healthy sessions and block direct fallback.</string>
 </resources>

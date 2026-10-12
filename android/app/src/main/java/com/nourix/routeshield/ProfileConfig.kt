@@ -167,19 +167,31 @@ object ProfileConfig {
             .put("mtu",iface["mtu"]?.toIntOrNull() ?: 1408))
     }
 
+    fun selectionTag(nodeCount:Int, selected:Int):String {
+        require(nodeCount>0 && selected in 0..nodeCount) { "Choose a valid node" }
+        return if(selected==0 && nodeCount>1) "auto" else "node-${if(selected==0) 0 else selected-1}"
+    }
+
     fun runtime(nodes: JSONArray, selected: Int, settings: JSONObject = JSONObject()): String {
         require(nodes.length() > 0 && selected in 0..nodes.length()) { "Choose a valid profile" }
         val out = JSONArray(); val endpoints = JSONArray(); val tags = JSONArray()
-        val chosen = if (selected == 0) (0 until nodes.length()).toList() else listOf(selected - 1)
-        chosen.forEachIndexed { index, source ->
-            val n = validate(JSONObject(nodes.getJSONObject(source).toString())).put("tag", if (chosen.size == 1) "proxy" else "node-$index")
+        (0 until nodes.length()).forEach { source ->
+            val n = validate(JSONObject(nodes.getJSONObject(source).toString())).put("tag", "node-$source")
             if (settings.optBoolean("fragmentTls", false) && n.optString("type") !in setOf("hysteria2","tuic","wireguard"))
                 n.optJSONObject("tls")?.put("fragment",true)?.put("record_fragment",true)
             if (n.optString("type") == "wireguard") endpoints.put(n) else out.put(n)
             tags.put(n.getString("tag"))
         }
-        if (chosen.size > 1) out.put(JSONObject().put("type", "urltest").put("tag", "proxy").put("outbounds", tags)
-            .put("url", "https://www.gstatic.com/generate_204").put("interval", "3m").put("tolerance", 150).put("interrupt_exist_connections", false))
+        val choices=JSONArray()
+        if(nodes.length()>1) {
+            out.put(JSONObject().put("type", "urltest").put("tag", "auto").put("outbounds", tags)
+                .put("url", "https://www.gstatic.com/generate_204").put("interval", "1m")
+                .put("tolerance", if(settings.optBoolean("preferStability",true)) 150 else 0).put("interrupt_exist_connections", false))
+            choices.put("auto")
+        }
+        for(i in 0 until tags.length()) choices.put(tags.getString(i))
+        out.put(JSONObject().put("type","selector").put("tag","proxy").put("outbounds",choices)
+            .put("default",selectionTag(nodes.length(),selected)).put("interrupt_exist_connections",true))
         out.put(JSONObject().put("type", "direct").put("tag", "direct"))
         val root = JSONObject().put("log", JSONObject().put("disabled", true))
             .put("dns", JSONObject().put("servers", JSONArray()

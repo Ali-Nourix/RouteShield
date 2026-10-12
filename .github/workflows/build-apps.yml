@@ -70,11 +70,17 @@ jobs:
         run: bash ci/scripts/setup-android-sdk.sh
       - name: Fetch checksum-pinned native engine
         run: sh android/fetch-engine.sh
-      - name: Test, lint and build all variants
+      - name: Test and lint Android
         working-directory: android
         run: |
           set -o pipefail
-          sh gradlew --stacktrace :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDiagnostic :app:assembleRelease 2>&1 | tee "$RUNNER_TEMP/android-preview-build.log"
+          sh gradlew --stacktrace '-Dorg.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8' :app:testDebugUnitTest :app:lintDebug 2>&1 | tee "$RUNNER_TEMP/android-preview-build.log"
+      - name: Package all Android variants in a fresh Gradle process
+        working-directory: android
+        run: |
+          set -o pipefail
+          df -h .
+          sh gradlew --stacktrace '-Dorg.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8' :app:assembleDebug :app:assembleDiagnostic :app:assembleRelease 2>&1 | tee -a "$RUNNER_TEMP/android-preview-build.log"
       - name: Annotate preview build failures
         if: failure()
         run: python3 ci/scripts/android-failure-summary.py
@@ -137,7 +143,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           export ANDROID_VERSION_CODE="$((GITHUB_RUN_NUMBER + 1000))"
-          sh gradlew :app:assembleRelease
+          sh gradlew --stacktrace '-Dorg.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8' :app:assembleRelease
       - name: Verify owner's signing certificate and APK signatures
         env:
           ANDROID_SIGNING_CERT_SHA256: ${{ secrets.ANDROID_SIGNING_CERT_SHA256 }}

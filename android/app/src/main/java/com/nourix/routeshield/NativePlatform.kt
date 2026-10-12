@@ -81,9 +81,7 @@ class NativePlatform(private val vpn: TunnelService) : PlatformInterface {
         }
         underlying?.let { builder.setUnderlyingNetworks(arrayOf(it)) }
         val descriptor = builder.establish() ?: error("TUN establishment failed")
-        if(vpn.closing) { descriptor.close(); error("VPN startup was cancelled") }
-        vpn.tun?.close(); vpn.tun = descriptor
-        return descriptor.fd // Keep ownership until shutdown; never detach and leak the FD.
+        return vpn.attachTun(descriptor) // atomic with shutdown; native receives a borrowed FD.
     }
     override fun getInterfaces(): NetworkInterfaceIterator {
         val values = connectivity.allNetworks.mapNotNull { network ->

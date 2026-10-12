@@ -7,3 +7,8 @@ third_party/sing-box/
 *.user
 *.suo
 .vs/
+
+# Local compiler / Python test caches
+**/.kotlin/
+__pycache__/
+*.pyc
