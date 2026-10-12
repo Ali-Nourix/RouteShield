@@ -19,7 +19,6 @@ public sealed class LatencyTester
 {
     private const int Parallelism = 6;
     private static readonly TimeSpan PerProfileTimeout = TimeSpan.FromSeconds(6);
-    private static readonly TimeSpan ApiReadyTimeout = TimeSpan.FromSeconds(8);
 
     private readonly HttpClient _client = new() { Timeout = Timeout.InfiniteTimeSpan };
 
@@ -45,8 +44,7 @@ public sealed class LatencyTester
             cancellationToken);
 
         await using var core = new CoreProcessService("latency probe");
-        await core.StartAsync(AppPaths.ProbeConfig);
-        await WaitForApiAsync(controller, secret, cancellationToken);
+        await core.StartAsync(AppPaths.ProbeConfig, controller, secret);
 
         AppLog.Write(LogCategory.Network, $"Latency test started for {candidates.Count} profile(s)");
 
@@ -66,34 +64,6 @@ public sealed class LatencyTester
 
         await Task.WhenAll(tests);
         AppLog.Write(LogCategory.Network, "Latency test finished");
-    }
-
-    private async Task WaitForApiAsync(Uri controller, string secret, CancellationToken cancellationToken)
-    {
-        var deadline = DateTimeOffset.Now + ApiReadyTimeout;
-
-        while (DateTimeOffset.Now < deadline)
-        {
-            try
-            {
-                using var request = Authorized(HttpMethod.Get, new Uri(controller, "version"), secret);
-                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                timeout.CancelAfter(TimeSpan.FromSeconds(1));
-
-                using var response = await _client.SendAsync(request, timeout.Token);
-                if (response.IsSuccessStatusCode)
-                {
-                    return;
-                }
-            }
-            catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException && !cancellationToken.IsCancellationRequested)
-            {
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
-        }
-
-        throw new TimeoutException("The latency probe did not come up in time.");
     }
 
     private async Task<LatencyResult> MeasureAsync(Uri controller, string secret, Guid profileId, CancellationToken cancellationToken)

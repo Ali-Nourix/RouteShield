@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using RouteShield.Tunnels;
 
 namespace RouteShield.Services;
 
@@ -54,7 +55,7 @@ public sealed class CoreProcessService : IAsyncDisposable
         return (result.ExitCode == 0, result.Output.Trim());
     }
 
-    public async Task StartAsync(string configPath)
+    public async Task StartAsync(string configPath, Uri controlUri, string controlSecret)
     {
         await _gate.WaitAsync();
         try
@@ -99,9 +100,9 @@ public sealed class CoreProcessService : IAsyncDisposable
             _process.BeginErrorReadLine();
             StartedAt = DateTimeOffset.Now;
 
-            // The core validates its adapter and dial settings as it comes up; a failure
-            // here shows as an immediate exit rather than as a start error.
-            await Task.Delay(TimeSpan.FromMilliseconds(700));
+            // Cold starts may take longer and warm starts less; poll the actual authenticated
+            // API instead of adding 700 ms to every successful start without checking readiness.
+            await CoreReadiness.WaitAsync(controlUri, controlSecret, () => _process.HasExited, TimeSpan.FromSeconds(8));
             if (_process.HasExited)
             {
                 throw new InvalidOperationException($"The {_label} core stopped immediately (exit code {_process.ExitCode}).");

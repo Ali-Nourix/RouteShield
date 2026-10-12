@@ -1,0 +1,6 @@
+245dfaf673e735738c01bca9bc69ca88c920c2c602c76cfa8812ca8d154f7d00  debug/app-arm64-v8a-debug.apk
+b30d6ec5e2e857075849025bc2f9c2e0069748fa0ede9d8373bf7a1b3ed4bdb8  debug/app-x86_64-debug.apk
+538808c32b1696067f3fdb79fd7d3625608107475aa8387b36d968493671e9f7  diagnostic/app-arm64-v8a-diagnostic.apk
+62fad540d4bde6a1f0810248cceeb86635c1cbcb090ed70526328f508aceac52  diagnostic/app-x86_64-diagnostic.apk
+866bd04d84ade3638d145c4243a8cf626af76423350fd2facf0198f51045b1e1  release/app-arm64-v8a-release-unsigned.apk
+fd90a19dda3d9081002da5b52d73f0581263b6ac8e981661dbc9b0ba84599c36  release/app-x86_64-release-unsigned.apk

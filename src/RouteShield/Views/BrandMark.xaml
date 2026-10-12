@@ -6,7 +6,7 @@
         <Canvas Width="32" Height="32">
             <Path Data="M16 2 L28 7 V16 C28 23 22 28 16 30 C10 28 4 23 4 16 V7 Z"
                   Fill="{Binding ShieldBrush, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-            <Path Data="M10 21 H14 L22 11"
+            <Path Data="M10 16 L14 20 L22 11"
                   Stroke="{Binding RouteBrush, RelativeSource={RelativeSource AncestorType=UserControl}}"
                   StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
         </Canvas>

@@ -1,0 +1,9 @@
+RouteShield Android preview — GPL-3.0. Source: https://github.com/Ali-Nourix/RouteShield
+sing-box/libbox 1.14.0 — GPL-3.0, source https://github.com/SagerNet/sing-box/tree/v1.14.0
+Android platform interface reference: https://github.com/SagerNet/sing-box-for-android (GPL-3.0).
+Binary distribution: https://github.com/singbox-android/libbox/releases/tag/1.14.0
+This binary is distributed by a third party, NOT verified as an official SagerNet release.
+Pinned SHA-256: 13fbeabcb4622250762afa1b137daaba861a4dc1875643d18621339912f32330
+AndroidX Compose/Activity/Lifecycle/ProfileInstaller — Apache-2.0, https://github.com/androidx/androidx
+MaterialKolor — Apache-2.0, https://github.com/jordond/MaterialKolor
+Full source and build instructions are linked in android/README.md. No private Sekke source is included.

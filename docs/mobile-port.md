@@ -1,51 +1,47 @@
-# Mobile port — platform decision required
+# Android port — implemented preview and remaining acceptance gates
 
-Status: preparation/architecture only. No APK, AAB, IPA, native mobile UI or working mobile
-VPN is implemented or claimed. Choose Android, iOS or both before implementation.
+The user's chosen platform is Android; no Supabase. Actual source is in `android/`,
+not a responsive desktop mockup. Native VpnService + pinned libbox engine; Compose
+Material 3 Expressive UI and independent debug/diagnostic/release variants.
 
-## Reuse and replacement
+## Desktop-to-mobile capability matrix
 
-The cross-platform Core library already owns parsing and subscription/configuration logic.
-WPF views, process-path selectors, Windows Firewall, WireSock, DPAPI and elevated startup
-cannot simply be copied to mobile. In particular, the Windows TUN runtime configuration and
-process regex routing are not a drop-in mobile engine contract.
+| Capability | Android preview | Difference / limitation |
+|---|---|---|
+| Profile library, multiple groups, active node | Implemented, encrypted local library | Settings changes require explicit reconnect |
+| Share-link/base64/JSON subscriptions, refresh | Implemented with HTTPS deadlines and limits | No remote profile sync or scheduled background refresh |
+| VLESS/Reality, VMess, Trojan, SS, HY2, TUIC, AnyTLS | Implemented import + native config | Live interoperability must be checked with owned endpoints |
+| Standard WireGuard | Userspace native endpoint and INI import | No WireSock driver; AmneziaWG rejected, not silently treated as WireGuard |
+| Automatic selection and latency | Native urltest, stable tolerance, outage backoff | Measurements available while connected in auto group |
+| Traffic rate/totals, exit IP, connectivity | Native traffic callbacks + HTTPS probes | No fabricated zero/success before a measurement; no historical analytics |
+| Per-application split tunnel | All/include/exclude Android packages | Launchable apps only; not Windows process regex/rule editor |
+| Encrypted DNS, QUIC preference, TLS fragmentation | Implemented explicit policies | Fragmentation off by default; no TLS validation downgrade |
+| Domestic direct bypass | Explicit off-by-default .ir/service rules | Not a comprehensive maintained Iran-IP database |
+| Light/dark, Persian RTL/English, adaptive UI | Genuine Expressive components/token wrappers | alpha08, not Sekke's newer alpha28; reference, not copied private code |
+| Redacted diagnostics export | Implemented user-selected destination | No packet bodies/configs/URLs/keys exported |
+| Windows browser route extensions, bridges, process ownership | Not ported | Mobile browsers do not provide desktop extension/IPC parity |
+| Startup, tray, firewall elevation, WireSock, core-file picker | Platform-specific replacement or absent | Android consent + foreground notification + system VPN settings |
+| Process-death kill switch | Android system Always-on/lockdown | Enable OS "Block connections without VPN"; app cannot promise it alone |
 
-Separate mobile tunnel lifecycle/storage from the shared parsing layer; keep desktop behavior
-unchanged. Persist keys only in the device's secure storage, never in Supabase. The device
-may retain encrypted profiles locally; traffic payloads need no remote database writes.
+"Desktop-like capabilities" does not mean full desktop feature parity. Missing desktop-only
+capabilities above are explicit; do not advertise them as implemented. Android retains encrypted
+profiles locally, not traffic payloads in Supabase. Working remote servers are still required.
 
-## Android track
+## Verification boundaries
 
-- Native `VpnService` consent and foreground-service lifecycle, with accurate connection,
-  reconnecting, failed and disconnected states. A notification must remain visible while active.
-- Select a supported sing-box Android library/binding or WireGuard engine and verify its
-  license, pinned version and ABI support. Do not launch the Windows executable or hand a
-  TUN descriptor to an unverified binding.
-- Per-app routing via installed application package IDs and VpnService allow/disallow lists,
-  with narrowly scoped package visibility. Rebuild the service when the policy changes.
-- Android Keystore-backed encryption for profiles; no sensitive logs, analytics or cloud sync
-  by default. Disable backup/export of unencrypted secrets.
-- Test VPN permission refusal/revocation, always-on/lockdown integration, Wi-Fi↔cellular
-  changes, foreground restrictions, battery saver, screen-off, process death and IPv6/DNS.
+Automated unit/config/render tests and successful APK assembly are necessary, not sufficient.
+Robolectric captures render the actual Compose screens on the host, not a real Android device.
+Linux engine checks parse the Android configuration, not mobile JNI/TUN behavior. Production
+release remains unsigned; preview APKs are debug signed, with separate application IDs.
 
-## iOS track
+Device tests still required before removing preview/draft status:
+1. Consent denial/revocation, Android 8/14/15 foreground restrictions and notification behavior.
+2. Real tunnel traffic to authorized endpoints for each protocol, DNS/IPv6 and exit-IP checks.
+3. All/include/exclude packages, invalid/uninstalled package handling, app/engine termination.
+4. Wi-Fi↔cellular, airplane mode, endpoint loss, battery saver and screen-off.
+5. Always-on/OS-lockdown with process death; verify no unexpected direct fallback.
+6. Small/large screens, RTL, dark mode, 200% text, accessibility, IME and modal behavior.
+7. Rebuilt/audited libbox source provenance, production signing and distribution compliance.
 
-- Native Network Extension / Packet Tunnel Provider, including its entitlements, extension
-  lifecycle and secure app-group/keychain sharing where necessary.
-- Requires an Apple signing/developer setup, Xcode/macOS and physical-device testing. None
-  was provisioned in this Linux environment.
-- Do not promise Windows-style arbitrary per-application routing for a normal consumer
-  app. Apple per-app VPN capabilities depend on platform/managed-device constraints.
-
-## Acceptance gates
-
-1. Signed, installable artifact for the explicitly selected platform.
-2. Engine configurations validated against that platform's actual engine version.
-3. Real tunnel traffic to owned test endpoints; verify exit IP, DNS and IPv6 behavior.
-4. Airplane mode, endpoint loss and app/engine termination without silent direct fallback.
-5. Secret storage, redacted diagnostics, import limits and no remote payload writes verified.
-6. Small-screen UI, accessibility, touch targets, empty/error/permission states reviewed on device.
-7. Publish device/OS/ABI test matrix and actual results, including blocked or skipped cases.
-
-A responsive mockup, successful desktop cross-build or Linux `sing-box check` result is not
-mobile VPN acceptance evidence.
+No production device or owned test-server credential was supplied. Do not infer a passing
+mobile VPN test from APK compilation or mock HTTP tests. iOS is outside this request.
