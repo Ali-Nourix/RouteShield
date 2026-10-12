@@ -36,7 +36,7 @@
   packets and TLS records so the server name is never in one packet. It hides nothing from an
   observer who reassembles the stream; it is a robustness measure against simple filters.
 - **Logs.** Everything written to the log is redacted first: keys, passwords, UUIDs, tokens,
-  share links, and the path and query of any URL. The diagnostics bundle contains only redacted
+  share links (including AnyTLS), Authorization headers, and URL userinfo/path/query/fragment. The diagnostics bundle contains only redacted
   logs and a short environment summary.
 - **Browser bridge.** The API the extensions read is bound to 127.0.0.1, answers one GET,
   sets no CORS headers and refuses any request whose Host header is not its own loopback
@@ -74,6 +74,15 @@ of its system changes:
 Get-NetFirewallRule -Group 'RouteShield Kill Switch' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 Get-Process sing-box -ErrorAction SilentlyContinue | Stop-Process -Force
 ```
+
+## Review and hardening notes
+
+See [the targeted 2026-10-12 review](docs/security-review-2026-10-12.md) for changes,
+regression evidence and remaining release gates. Elevated firewall commands are passed as
+encoded arguments directly to the system PowerShell binary, not executed from a mutable
+LocalAppData script. Interrupted-session engine inputs are cleaned by the next mutex-owning
+startup; failed-preflight runtime inputs are cleaned on teardown as well. Deletion is
+best-effort, not secure erasure or a guarantee after every power failure.
 
 ## Reporting
 

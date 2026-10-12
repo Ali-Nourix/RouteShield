@@ -58,8 +58,8 @@ function proxyFor(assignment) {
   }
 
   if (RouteShieldBridge.failsClosed(assignment)) {
-    const key = `profile:${assignment.id}`;
-    return [socks(lastPorts.get(key) ?? RouteShieldBridge.DEAD_PORT)];
+    // An old port may have been reused by another process after the core stopped.
+    return [socks(RouteShieldBridge.DEAD_PORT)];
   }
 
   return undefined;
@@ -72,17 +72,13 @@ function assignmentByOrigin(details) {
     return undefined;
   }
 
-  let found;
-  for (const [tabId, assignment] of assignments) {
-    if (tabSites.get(tabId) !== site) {
-      continue;
-    }
-
-    if (found && (found.kind !== assignment.kind || found.id !== assignment.id)) {
-      return undefined;
-    }
-
-    found = assignment;
+  const matching = [...assignments].filter(([tabId]) => tabSites.get(tabId) === site).map(([, assignment]) => assignment);
+  const found = matching[0];
+  const ambiguous = matching.some((assignment) => assignment.kind !== found.kind || assignment.id !== found.id);
+  if (ambiguous) {
+    // A service worker shared by differently assigned tabs has no unique VPN owner. Hold it
+    // if any tab promised protection; returning undefined would silently use the open route.
+    return matching.some(RouteShieldBridge.failsClosed) ? { kind: "profile", id: null } : undefined;
   }
 
   return found;

@@ -8,7 +8,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>Assets\RouteShield.ico</ApplicationIcon>
     <AssemblyName>RouteShield</AssemblyName>
     <RootNamespace>RouteShield</RootNamespace>
     <Version>1.7.1</Version>
@@ -38,9 +37,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Resource Include="Assets\RouteShield.png" />
-    <Resource Include="Assets\RouteShield.ico" />
     <Resource Include="Assets\Fonts\*.ttf" />
   </ItemGroup>
 
+  <Import Project="BrandAssets.targets" />
 </Project>

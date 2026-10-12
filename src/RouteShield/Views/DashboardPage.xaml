@@ -18,7 +18,7 @@
         </Style>
     </UserControl.Resources>
 
-    <Grid Margin="30,24,30,28">
+    <Grid Margin="{StaticResource PageGutter}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -290,7 +290,7 @@
                            Text="No application is routed yet. Add one from Applications to start splitting traffic."
                            Visibility="{Binding Apps.Count, Converter={StaticResource ShowIfEmpty}}" />
 
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,12,0">
                     <ItemsControl ItemsSource="{Binding Apps}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>

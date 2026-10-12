@@ -97,13 +97,13 @@ function rulesFor(assignments, learned, state, lastPorts) {
     if (route) {
       port = route.port;
     } else if (RouteShieldBridge.failsClosed(assignment)) {
-      port = lastPorts[routeKey(assignment)] ?? RouteShieldBridge.DEAD_PORT;
+      port = RouteShieldBridge.DEAD_PORT;
     } else {
       continue;
     }
 
     // A domain two assigned sites share follows the first site assigned; a site's own domain always wins.
-    const domains = domainsFor(site, learned).filter((domain) => domain === site || !claimed.has(domain));
+    const domains = domainsFor(site, learned).filter((domain) => domain === site || (!Object.hasOwn(assignments, domain) && !claimed.has(domain)));
     domains.forEach((domain) => claimed.add(domain));
     rules.push({ domains, port });
   }

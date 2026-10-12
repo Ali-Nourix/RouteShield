@@ -65,51 +65,58 @@ public sealed class FirewallService
 
     private static async Task<string> RunPowerShellAsync(string script)
     {
-        AppPaths.Ensure();
-        var scriptPath = Path.Combine(AppPaths.Root, "firewall-task.ps1");
-        await File.WriteAllTextAsync(scriptPath, script, new UTF8Encoding(false));
+        // No script file in LocalAppData: an elevated child must never execute code that a
+        // non-elevated process can replace between writing it and PowerShell reading it.
+        using var process = Process.Start(CreateStartInfo(script,
+            Environment.GetFolderPath(Environment.SpecialFolder.System)))
+            ?? throw new InvalidOperationException("PowerShell could not be started.");
 
+        var standardOutput = process.StandardOutput.ReadToEndAsync();
+        var standardError = process.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         try
         {
-            var startInfo = new ProcessStartInfo("powershell.exe")
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-
-            foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath })
-            {
-                startInfo.ArgumentList.Add(argument);
-            }
-
-            using var process = Process.Start(startInfo)
-                                ?? throw new InvalidOperationException("PowerShell could not be started.");
-
-            var standardOutput = process.StandardOutput.ReadToEndAsync();
-            var standardError = process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
-
-            var output = await standardOutput;
-            var error = await standardError;
-
-            if (process.ExitCode != 0)
-            {
-                throw new InvalidOperationException("Windows Firewall: " + (error + output).Trim());
-            }
-
-            return output;
+            await process.WaitForExitAsync(timeout.Token);
         }
-        finally
+        catch (OperationCanceledException)
         {
             try
             {
-                File.Delete(scriptPath);
+                process.Kill(entireProcessTree: true);
             }
-            catch (IOException)
+            catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
             {
             }
+
+            throw new InvalidOperationException("Windows Firewall: PowerShell did not respond within 30 seconds.");
         }
+
+        var output = await standardOutput;
+        var error = await standardError;
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException("Windows Firewall: " + (error + output).Trim());
+        }
+
+        return output;
+    }
+
+    internal static ProcessStartInfo CreateStartInfo(string script, string systemDirectory)
+    {
+        var startInfo = new ProcessStartInfo(Path.Combine(systemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+
+        foreach (var argument in new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand",
+            Convert.ToBase64String(Encoding.Unicode.GetBytes(script)) })
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        return startInfo;
     }
 }

@@ -25,6 +25,14 @@ public partial class App : Application
             return;
         }
 
+        // Only the mutex owner may clean leftovers from an interrupted previous session.
+        foreach (var path in new[] { AppPaths.RuntimeConfig, AppPaths.WireSockConfig,
+            AppPaths.ProbeConfig, System.IO.Path.Combine(AppPaths.Root, "validate.json"),
+            System.IO.Path.Combine(AppPaths.Root, "firewall-task.ps1") })
+        {
+            TransientConfiguration.Delete(path);
+        }
+
         DispatcherUnhandledException += OnUnhandledException;
 
         // The palette is chosen before the first window exists, so a dark desktop never sees

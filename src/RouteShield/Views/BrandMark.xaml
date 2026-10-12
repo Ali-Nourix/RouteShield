@@ -3,15 +3,12 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Focusable="False">
     <Viewbox Stretch="Uniform">
-        <Canvas Width="24" Height="28">
-            <Path Data="M12,1 L23,5.2 L23,14.8 C23,21.2 17.8,25.4 12,27 C6.2,25.4 1,21.2 1,14.8 L1,5.2 Z"
+        <Canvas Width="32" Height="32">
+            <Path Data="M16 2 L28 7 V16 C28 23 22 28 16 30 C10 28 4 23 4 16 V7 Z"
                   Fill="{Binding ShieldBrush, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-            <Path Data="M6.5,19.2 L10.6,14 L13.6,16.6 L18.8,9.6"
+            <Path Data="M10 21 H14 L22 11"
                   Stroke="{Binding RouteBrush, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                  StrokeThickness="2.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
-            <Path Data="M14,9.4 L19.4,9.4 L19.4,14.8"
-                  Stroke="{Binding RouteBrush, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                  StrokeThickness="2.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                  StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
         </Canvas>
     </Viewbox>
 </UserControl>

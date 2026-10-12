@@ -31,7 +31,8 @@ public sealed class StartupService
 
     private static async Task RunAsync(bool ignoreFailure, params string[] arguments)
     {
-        var startInfo = new ProcessStartInfo("schtasks.exe")
+        var startInfo = new ProcessStartInfo(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.System), "schtasks.exe"))
         {
             UseShellExecute = false,
             CreateNoWindow = true,

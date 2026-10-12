@@ -14,5 +14,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\RouteShield.Core\RouteShield.Core.csproj" />
+    <Compile Include="../../src/RouteShield/Services/FirewallService.cs" Link="Services/FirewallService.cs" />
   </ItemGroup>
 </Project>

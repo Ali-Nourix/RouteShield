@@ -105,3 +105,18 @@ The window is its own chrome: a 40px bar with the mark, the product name and the
 right. The dashboard carries the status card — ink when connected, surface when not — three
 figures, and two lists. Profiles, Applications, Security and Diagnostics follow the same header
 and rule rhythm.
+
+## 2026-10 brand and spacing refinement
+
+The mark is one shield and one continuous route, without a second arrowhead. The SVG and
+`Views/BrandMark.xaml` share a 32 × 32 geometry. `Assets/BrandAssets.json` contains the new
+raster/ICO variants (16–256 px) as base64; `BrandAssets.targets` decodes them into `obj/brand`
+before compilation, with the same resource URIs used by the tray. The older tracked binary
+icons are no longer build inputs. No image library or network download is needed to build.
+
+Page gutters are `PageGutter` (32/24/32/32), content panels are `PanelPadding` (24), and list
+rows are `ListRowInset` (16/12). Scrollable page content reserves 12 px beside its scrollbar.
+These tokens work with both existing palettes and preserve the Modernist visual language.
+
+Native WPF visual acceptance still requires Windows at 100%, 125%, 150% and 200% scaling;
+HTML brand previews are not screenshots of the running desktop application.

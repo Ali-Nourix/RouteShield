@@ -7,7 +7,7 @@
     <UserControl.Resources>
         <!-- One line of the library: name, format, and how the node last measured. -->
         <DataTemplate x:Key="ProfileRow">
-            <Grid Margin="10,0,6,0">
+            <Grid Margin="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -155,7 +155,7 @@
         </Style>
     </UserControl.Resources>
 
-    <Grid Margin="30,24,30,28">
+    <Grid Margin="{StaticResource PageGutter}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />

@@ -1052,6 +1052,11 @@ public sealed class TunnelController : IAsyncDisposable
         await _core.StopAsync();
         await _wireSock.StopAsync();
 
+        // A rejected validation never started a process, so the process service did not own
+        // its file. Remove those failed-preflight inputs as well as normal runtime inputs.
+        TransientConfiguration.Delete(AppPaths.RuntimeConfig);
+        TransientConfiguration.Delete(AppPaths.WireSockConfig);
+
         if (!keepKillSwitch && KillSwitchArmed)
         {
             try
