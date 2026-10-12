@@ -41,7 +41,7 @@ public sealed class TunnelController : IAsyncDisposable
     private static readonly TimeSpan GroupRecheckInterval = TimeSpan.FromMinutes(2);
 
     /// <summary>How often the node an automatic group is using is tested on its own.</summary>
-    private static readonly TimeSpan SelectionCheckInterval = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan SelectionCheckInterval = TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// When the chosen node fails and no other member has a recent pass, every member is tested,
@@ -349,7 +349,7 @@ public sealed class TunnelController : IAsyncDisposable
             throw new InvalidOperationException("sing-box rejected the configuration: " + FirstMeaningfulLine(output));
         }
 
-        await _core.StartAsync(AppPaths.RuntimeConfig);
+        await _core.StartAsync(AppPaths.RuntimeConfig, runtime.ControlUri, runtime.ControlSecret);
 
         if (session.Settings.AppKillSwitch && session.Settings.RouteMode == RouteMode.SelectedAppsOnly)
         {
@@ -565,13 +565,21 @@ public sealed class TunnelController : IAsyncDisposable
         var started = DateTimeOffset.Now;
         _lastGroupCheck = started;
 
+        var firstAnswer = 0;
         using var slots = new SemaphoreSlim(GroupCheckParallelism);
         var checks = await Task.WhenAll(runtime.Members.Select(async member =>
         {
             await slots.WaitAsync(cancellationToken);
             try
             {
-                return await CheckMemberAsync(runtime, member, cancellationToken);
+                var check = await CheckMemberAsync(runtime, member, cancellationToken);
+                if (check.Answered && Interlocked.CompareExchange(ref firstAnswer, 1, 0) == 0)
+                {
+                    // The URL-test group has already learned this result. Name its live route
+                    // immediately instead of leaving "choosing…" until every dead node times out.
+                    await RefreshGroupSelectionAsync(runtime, cancellationToken);
+                }
+                return check;
             }
             finally
             {
@@ -1051,6 +1059,11 @@ public sealed class TunnelController : IAsyncDisposable
         StopProbing();
         await _core.StopAsync();
         await _wireSock.StopAsync();
+
+        // A rejected validation never started a process, so the process service did not own
+        // its file. Remove those failed-preflight inputs as well as normal runtime inputs.
+        TransientConfiguration.Delete(AppPaths.RuntimeConfig);
+        TransientConfiguration.Delete(AppPaths.WireSockConfig);
 
         if (!keepKillSwitch && KillSwitchArmed)
         {

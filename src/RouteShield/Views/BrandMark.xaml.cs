@@ -4,7 +4,7 @@ using System.Windows.Media;
 
 namespace RouteShield.Views;
 
-/// <summary>The RouteShield mark: a shield carrying the route that rises out of it.</summary>
+/// <summary>The RouteShield mark: a shield with one continuous, ascending route.</summary>
 public partial class BrandMark : UserControl
 {
     public static readonly DependencyProperty ShieldBrushProperty = DependencyProperty.Register(

@@ -105,20 +105,37 @@ public static partial class AppLog
             return value;
         }
 
-        value = SecretFieldPattern().Replace(value, "$1$2<redacted>");
+        // Redact URLs first: userinfo and root-level queries can contain credentials too.
+        value = HttpUrlPattern().Replace(value, match =>
+        {
+            if (!Uri.TryCreate(match.Value, UriKind.Absolute, out var uri))
+            {
+                return "<redacted-url>";
+            }
+
+            var sensitive = uri.UserInfo.Length > 0 || uri.AbsolutePath != "/"
+                || uri.Query.Length > 0 || uri.Fragment.Length > 0;
+            return $"{uri.Scheme}://{uri.Authority}" + (sensitive ? "/<redacted>" : string.Empty);
+        });
         value = ShareLinkPattern().Replace(value, "$1://<redacted>");
-        return UrlPathPattern().Replace(value, "$1/<redacted>");
+        value = AuthorizationPattern().Replace(value, "$1<redacted>");
+        return SecretFieldPattern().Replace(value, "$1<redacted>");
     }
 
     private static string Flatten(string message) =>
         message.Replace('\r', ' ').Replace('\n', ' ').Trim();
 
-    [GeneratedRegex(@"(?i)\b(private[_-]?key|pre[_-]?shared[_-]?key|public[_-]?key|password|uuid|token|secret|auth)(\s*[:=]\s*""?)[^,;""\s]+")]
+    // Quoted JSON keys and values (including escaped quotes/spaces) are deliberately covered.
+    // Non-backtracking matching keeps untrusted core output from monopolising its reader thread.
+    [GeneratedRegex("""(["']?\b(?:private[_-]?key|pre[_-]?shared[_-]?key|public[_-]?key|password|uuid|(?:access[_-]?|refresh[_-]?|api[_-]?)?token|(?:client[_-]?)?secret|api[_-]?key|auth)\b["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^,;"'\s}]+)""", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)]
     private static partial Regex SecretFieldPattern();
 
-    [GeneratedRegex(@"(?i)\b(vless|vmess|trojan|ss|ssr|hysteria2?|hy2|tuic)://\S+")]
+    [GeneratedRegex(@"\b(vless|vmess|trojan|ss|ssr|hysteria2?|hy2|tuic|anytls)://\S+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)]
     private static partial Regex ShareLinkPattern();
 
-    [GeneratedRegex(@"(?i)\b(https?://[^/\s""]+)/\S+")]
-    private static partial Regex UrlPathPattern();
+    [GeneratedRegex("""(["']?\b(?:proxy[_-]?)?authorization\b["']?\s*[:=]\s*)[^\r\n,;}]+""", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)]
+    private static partial Regex AuthorizationPattern();
+
+    [GeneratedRegex("""\bhttps?://[^\s"'<>]+""", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)]
+    private static partial Regex HttpUrlPattern();
 }

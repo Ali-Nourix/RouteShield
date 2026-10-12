@@ -468,7 +468,7 @@
                                     <Grid>
                                         <Rectangle x:Name="Marker" Width="3" HorizontalAlignment="Left"
                                                    Fill="{DynamicResource AccentBrush}" Visibility="Collapsed" />
-                                        <ContentPresenter Margin="0,11" />
+                                        <ContentPresenter Margin="{StaticResource ListRowInset}" />
                                     </Grid>
                                 </Border>
                                 <ControlTemplate.Triggers>
@@ -552,7 +552,7 @@
         <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" />
         <Setter Property="BorderThickness" Value="2" />
         <Setter Property="CornerRadius" Value="{StaticResource RadiusLg}" />
-        <Setter Property="Padding" Value="28,26" />
+        <Setter Property="Padding" Value="{StaticResource PanelPadding}" />
     </Style>
 
     <Style x:Key="InkCard" TargetType="Border" BasedOn="{StaticResource Card}">

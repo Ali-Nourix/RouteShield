@@ -217,3 +217,10 @@ RouteShield builds one sing-box configuration per connection:
 
 GPL-3.0 — see [LICENSE](LICENSE). Third-party components are listed in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Android preview
+
+Native Android development is in [android/README.md](android/README.md), with genuine
+Material 3 Expressive, debug/diagnostic/release build variants, per-app routing, encrypted
+profile library and native engine integration. See [capability matrix](docs/mobile-port.md)
+for desktop differences and outstanding physical-device/release gates. No Supabase is used.

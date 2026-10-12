@@ -13,6 +13,19 @@ namespace RouteShield.Subscriptions;
 /// </summary>
 public sealed class SubscriptionService : IDisposable
 {
+    internal static readonly TimeSpan FetchTimeout = TimeSpan.FromSeconds(35);
+
+    private readonly Func<Uri?, HttpMessageHandler>? _handlerFactory;
+    private readonly TimeSpan _fetchTimeout = FetchTimeout;
+
+    public SubscriptionService() { }
+
+    internal SubscriptionService(Func<Uri?, HttpMessageHandler> handlerFactory, TimeSpan? fetchTimeout = null)
+    {
+        _handlerFactory = handlerFactory;
+        _fetchTimeout = fetchTimeout ?? FetchTimeout;
+    }
+
     private const int MaxBytes = 5 * 1024 * 1024;
     private const string UserAgent = "RouteShield/1.7.1 (sing-box)";
 
@@ -23,26 +36,40 @@ public sealed class SubscriptionService : IDisposable
     public async Task<SubscriptionFetch> FetchAsync(
         string url, Uri? proxy = null, CancellationToken cancellationToken = default)
     {
-        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || uri.UserInfo.Length > 0)
         {
             throw new ArgumentException("A subscription URL must be an absolute https:// address.", nameof(url));
         }
 
-        var client = ClientFor(proxy);
-        using var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        // HttpClient.Timeout stops covering the request after headers with ResponseHeadersRead.
+        // One linked deadline must include decompression and reading the entire capped body.
+        var requestedCancellation = cancellationToken;
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(_fetchTimeout);
+        cancellationToken = deadline.Token;
 
-        if (response.Content.Headers.ContentLength is > MaxBytes)
+        try
         {
-            throw new InvalidOperationException("The subscription response is larger than 5 MB.");
+            var client = ClientFor(proxy);
+            using var response = await SendHttpsAsync(client, uri, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            if (response.Content.Headers.ContentLength is > MaxBytes)
+            {
+                throw new InvalidOperationException("The subscription response is larger than 5 MB.");
+            }
+
+            var body = await ReadCappedAsync(response, cancellationToken);
+            var usage = response.Headers.TryGetValues(SubscriptionUsage.HeaderName, out var values)
+                ? SubscriptionUsage.Parse(values.FirstOrDefault())
+                : null;
+
+            return new SubscriptionFetch(SubscriptionParser.Parse(body), usage);
         }
-
-        var body = await ReadCappedAsync(response, cancellationToken);
-        var usage = response.Headers.TryGetValues(SubscriptionUsage.HeaderName, out var values)
-            ? SubscriptionUsage.Parse(values.FirstOrDefault())
-            : null;
-
-        return new SubscriptionFetch(SubscriptionParser.Parse(body), usage);
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested && !requestedCancellation.IsCancellationRequested)
+        {
+            throw new TimeoutException("The subscription download timed out before its complete body was received.");
+        }
     }
 
     /// <summary>One client per route, kept for the session: a new handler per refresh would leak sockets.</summary>
@@ -57,19 +84,48 @@ public sealed class SubscriptionService : IDisposable
                 return existing;
             }
 
-            var handler = new HttpClientHandler
+            var handler = _handlerFactory?.Invoke(proxy) ?? new HttpClientHandler
             {
                 AutomaticDecompression = DecompressionMethods.All,
+                AllowAutoRedirect = false,
+                UseCookies = false,
                 UseProxy = proxy is not null,
                 Proxy = proxy is null ? null : new WebProxy(proxy)
             };
 
-            var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(35) };
+            var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
             client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
             client.DefaultRequestHeaders.Accept.ParseAdd("text/plain, application/json;q=0.9, */*;q=0.5");
 
             _clients[key] = client;
             return client;
+        }
+    }
+
+    private static async Task<HttpResponseMessage> SendHttpsAsync(HttpClient client, Uri uri, CancellationToken cancellationToken)
+    {
+        // Resolve redirects ourselves so every hop is HTTPS, with a bounded redirect chain.
+        for (var redirects = 0; ; redirects++)
+        {
+            var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (response.StatusCode is not (HttpStatusCode.MovedPermanently or HttpStatusCode.Found
+                or HttpStatusCode.SeeOther or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect))
+            {
+                return response;
+            }
+
+            var location = response.Headers.Location;
+            response.Dispose();
+            if (redirects >= 5 || location is null)
+            {
+                throw new HttpRequestException("The subscription redirect chain is invalid or too long.");
+            }
+
+            uri = location.IsAbsoluteUri ? location : new Uri(uri, location);
+            if (uri.Scheme != Uri.UriSchemeHttps || uri.UserInfo.Length > 0)
+            {
+                throw new HttpRequestException("A subscription redirect must use HTTPS without embedded credentials.");
+            }
         }
     }
 

@@ -1,0 +1,157 @@
+name: Build Windows and Android
+
+on:
+  push:
+    branches: [main, 'fix/**']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      sign_android:
+        description: 'Build owner-signed Android release (main only; requires secrets)'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-apps-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+
+jobs:
+  windows:
+    name: Windows portable ZIP
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4, pinned
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4, pinned
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build self-contained Windows package with verified core
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./scripts/build.ps1 -Runtime win-x64
+      - name: Test against the Windows engine being packaged
+        shell: pwsh
+        env:
+          ROUTESHIELD_SINGBOX: ${{ github.workspace }}\third_party\sing-box\sing-box.exe
+        run: dotnet test tests/RouteShield.Core.Tests/RouteShield.Core.Tests.csproj -c Release
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4, pinned
+        with:
+          name: RouteShield-Windows-win-x64-${{ github.run_number }}
+          path: artifacts/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  android:
+    name: Android preview and unsigned release
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4, pinned
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4, pinned
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Test signing helper safety
+        run: python3 -m unittest discover -s ci/tests -v
+      - name: Install SDK 35
+        run: bash ci/scripts/setup-android-sdk.sh
+      - name: Fetch checksum-pinned native engine
+        run: sh android/fetch-engine.sh
+      - name: Test, lint and build all variants
+        working-directory: android
+        run: |
+          set -o pipefail
+          sh gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDiagnostic :app:assembleRelease 2>&1 | tee "$RUNNER_TEMP/android-preview-build.log"
+      - name: Annotate preview build failures
+        if: failure()
+        run: python3 ci/scripts/android-failure-summary.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4, pinned
+        with:
+          name: RouteShield-Android-preview-and-unsigned-${{ github.run_number }}
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/apk/diagnostic/*.apk
+            android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload test results, UI captures and lint report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4, pinned
+        with:
+          name: RouteShield-Android-QA-${{ github.run_number }}
+          path: |
+            android/app/build/test-results/testDebugUnitTest/*.xml
+            android/app/build/ui-qa/*.png
+            android/app/build/reports/lint-results-debug.*
+          if-no-files-found: warn
+          retention-days: 14
+
+  android-signed:
+    name: Android owner-signed release
+    if: github.event_name == 'workflow_dispatch' && inputs.sign_android && github.ref == 'refs/heads/main'
+    needs: [windows, android]
+    environment: android-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4, pinned
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4, pinned
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install SDK 35
+        run: bash ci/scripts/setup-android-sdk.sh
+      - name: Fetch checksum-pinned native engine
+        run: sh android/fetch-engine.sh
+      - name: Restore signing key to temporary private file
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_SIGNING_CERT_SHA256: ${{ secrets.ANDROID_SIGNING_CERT_SHA256 }}
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/routeshield-release.jks
+        run: python3 ci/scripts/restore-android-key.py
+      - name: Build signed release (no debug/unsigned fallback)
+        working-directory: android
+        env:
+          REQUIRE_ANDROID_SIGNING: 'true'
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/routeshield-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          export ANDROID_VERSION_CODE="$((GITHUB_RUN_NUMBER + 1000))"
+          sh gradlew :app:assembleRelease
+      - name: Verify owner's signing certificate and APK signatures
+        env:
+          ANDROID_SIGNING_CERT_SHA256: ${{ secrets.ANDROID_SIGNING_CERT_SHA256 }}
+        run: python3 ci/scripts/verify-android-signatures.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4, pinned
+        with:
+          name: RouteShield-Android-signed-release-${{ github.run_number }}
+          path: |
+            android/app/build/outputs/apk/release/*.apk
+            android/app/build/outputs/apk/release/SHA256SUMS.txt
+            android/app/build/outputs/apk/release/signing-certificate-sha256.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove temporary signing material
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/routeshield-release.jks"

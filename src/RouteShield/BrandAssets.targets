@@ -1,0 +1,39 @@
+<Project>
+  <PropertyGroup>
+    <BrandOutputDirectory>$(MSBuildProjectDirectory)/$(BaseIntermediateOutputPath)brand</BrandOutputDirectory>
+    <ApplicationIcon>$(BrandOutputDirectory)/RouteShield.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="$(BrandOutputDirectory)/RouteShield.png" Link="Assets/RouteShield.png" />
+    <Resource Include="$(BrandOutputDirectory)/RouteShield.ico" Link="Assets/RouteShield.ico" />
+  </ItemGroup>
+  <UsingTask TaskName="DecodeRouteShieldBrand" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <SourceFile ParameterType="System.String" Required="true" />
+      <OutputDirectory ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        Directory.CreateDirectory(OutputDirectory);
+        var text = File.ReadAllText(SourceFile);
+        foreach (var name in new[] { "RouteShield.png", "RouteShield.ico" })
+        {
+            var pattern = "\"" + Regex.Escape(name) + "\"\\s*:\\s*\"([A-Za-z0-9+/=]+)\"";
+            // The source is a fixed two-entry JSON object, not external input.
+            var match = Regex.Match(text, pattern);
+            if (!match.Success) { Log.LogError("Missing brand asset: " + name); return false; }
+            File.WriteAllBytes(Path.Combine(OutputDirectory, name), Convert.FromBase64String(match.Groups[1].Value));
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+  <Target Name="GenerateRouteShieldBrand" BeforeTargets="PrepareForBuild"
+          Inputs="$(MSBuildThisFileDirectory)Assets/BrandAssets.json;$(MSBuildThisFileFullPath)"
+          Outputs="$(BrandOutputDirectory)/RouteShield.png;$(BrandOutputDirectory)/RouteShield.ico">
+    <DecodeRouteShieldBrand SourceFile="$(MSBuildThisFileDirectory)Assets/BrandAssets.json"
+                           OutputDirectory="$(BrandOutputDirectory)" />
+  </Target>
+</Project>

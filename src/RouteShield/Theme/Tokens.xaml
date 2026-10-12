@@ -30,6 +30,11 @@
     <sys:Double x:Key="Space6">24</sys:Double>
     <sys:Double x:Key="Space8">32</sys:Double>
 
+    <!-- Shared content gutters: pages, panels and list rows use the same spacing scale. -->
+    <Thickness x:Key="PageGutter">32,24,32,32</Thickness>
+    <Thickness x:Key="PanelPadding">24</Thickness>
+    <Thickness x:Key="ListRowInset">16,12</Thickness>
+
     <!-- ══ Type scale ══ -->
 
     <!--

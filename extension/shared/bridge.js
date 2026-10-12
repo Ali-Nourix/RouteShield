@@ -35,18 +35,26 @@ const RouteShieldBridge = (() => {
       }
 
       const data = await response.json();
+      if (!data || data.app !== "RouteShield" || typeof data.connected !== "boolean" || !Array.isArray(data.routes)) {
+        return unreachable();
+      }
       return {
         reachable: true,
-        connected: Boolean(data.connected),
+        connected: data.connected,
         active: data.active ?? null,
         version: data.version ?? null,
-        routes: Array.isArray(data.routes) ? data.routes : []
+        routes: data.routes.filter(validRoute)
       };
     } catch {
       return unreachable();
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  function validRoute(route) {
+    return route && Number.isInteger(route.port) && route.port >= 1 && route.port <= 65535 &&
+      (route.kind === "bypass" || (["active", "profile"].includes(route.kind) && typeof route.id === "string" && route.id.length > 0));
   }
 
   /** The route an assignment points at right now, or null when it cannot be honoured. */
@@ -56,10 +64,10 @@ const RouteShieldBridge = (() => {
     }
 
     if (assignment.kind === "bypass") {
-      return state.routes.find((route) => route.kind === "bypass") ?? null;
+      return state.routes.find((route) => route.kind === "bypass" && validRoute(route)) ?? null;
     }
 
-    return state.routes.find((route) => route.id && route.id === assignment.id) ?? null;
+    return state.routes.find((route) => ["active", "profile"].includes(route.kind) && route.id === assignment.id && validRoute(route)) ?? null;
   }
 
   /**

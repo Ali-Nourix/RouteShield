@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Harden secret redaction, HTTPS subscription fetching and full-body download deadlines.
+- Remove the elevated firewall script-file race and resolve Windows tools from system paths.
+- Clean interrupted/preflight plaintext engine inputs on startup and teardown.
+- Correct browser route priority and ambiguous Firefox worker routing; hold unavailable
+  profiles instead of reusing old proxy ports, and validate bridge route data.
+- Prepare a separate workflow-hardening patch for release input handling and CI digests;
+  the workflow edits require additional GitHub write permission and are not applied here.
+- Refresh the minimal shield/route mark, app/tray icons and shared content spacing tokens.
+- Add regression coverage and document security review limits, Supabase VPN feasibility
+  and the platform decision needed before a native mobile implementation.
+
 ## 1.7.1
 
 ### Fixed

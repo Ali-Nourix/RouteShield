@@ -4,7 +4,7 @@
              xmlns:ui="clr-namespace:RouteShield.Ui"
              xmlns:views="clr-namespace:RouteShield.Views">
 
-    <Grid Margin="30,24,30,28">
+    <Grid Margin="{StaticResource PageGutter}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />

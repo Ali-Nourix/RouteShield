@@ -35,10 +35,13 @@ jobs:
       - name: Resolve the version
         id: version
         shell: bash
+        env:
+          RELEASE_EVENT: ${{ github.event_name }}
+          RELEASE_INPUT: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            raw="${{ inputs.version }}"
+          if [ "$RELEASE_EVENT" = "workflow_dispatch" ]; then
+            raw="$RELEASE_INPUT"
           else
             raw="$GITHUB_REF_NAME"
           fi
