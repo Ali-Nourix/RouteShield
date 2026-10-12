@@ -268,7 +268,7 @@
 
                 <Grid Margin="0,12,0,0">
                     <TextBlock Style="{StaticResource HelpText}" VerticalAlignment="Center" MaxWidth="620" HorizontalAlignment="Left"
-                               Text="Firefox: open the .xpi from the extensions folder (Developer Edition and Nightly can keep it after setting xpinstall.signatures.required to false), or about:debugging → Load Temporary Add-on for one session. Chrome: chrome://extensions → Developer mode → Load unpacked → the chrome folder." />
+                               Text="Download browser add-ons separately from GitHub Releases. Firefox: use the XPI temporarily through about:debugging; permanent standard-Firefox installation requires Mozilla signing. Chrome: extract the Chrome ZIP into extensions/chrome, then chrome://extensions → Developer mode → Load unpacked." />
                     <Button Style="{StaticResource SecondaryButton}" HorizontalAlignment="Right" VerticalAlignment="Center"
                             Command="{Binding OpenExtensionFolderCommand}" Content="Open extension folder" />
                 </Grid>
