@@ -84,7 +84,7 @@
 <string name="active_profile">Active profile</string>
 <string name="nodes">Nodes</string>
 <string name="auto_short">Automatic</string>
-<string name="auto_detail">Select by measured HTTPS latency; recheck every minute. Stability preference limits needless changes. Not a bandwidth speed test.</string>
+<string name="auto_detail">Measured HTTPS latency, not bandwidth. Stability preference applies.</string>
 <string name="show_more">Show more nodes</string>
 <string name="nodes_hint">Switch nodes while connected; existing sessions may reconnect. A dash means unmeasured. Changing a profile group still requires Disconnect.</string>
 <string name="app_vpn_title">VPN for applications</string>

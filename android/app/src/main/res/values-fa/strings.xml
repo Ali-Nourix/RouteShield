@@ -83,7 +83,7 @@
 <string name="active_profile">پروفایل فعال</string>
 <string name="nodes">نودها</string>
 <string name="auto_short">انتخاب خودکار</string>
-<string name="auto_detail">انتخاب بر اساس تأخیر HTTPS؛ بررسی دوباره هر دقیقه. اولویت پایداری از تغییر بی‌دلیل جلوگیری می‌کند. این تست سرعت دانلود نیست.</string>
+<string name="auto_detail">تأخیر HTTPS، نه سرعت دانلود؛ با اولویت پایداری انتخابی.</string>
 <string name="show_more">نمایش نودهای بیشتر</string>
 <string name="nodes_hint">هنگام اتصال می‌توانی نود را عوض کنی؛ نشست‌های جاری ممکن است دوباره وصل شوند. خط تیره یعنی اندازه‌گیری نشده. تغییر گروه پروفایل هنوز نیاز به قطع اتصال دارد.</string>
 <string name="app_vpn_title">VPN برای برنامه‌ها</string>

@@ -125,10 +125,10 @@ object ShieldSpace { val small=8.dp; val medium=16.dp; val gutter=16.dp; val sec
             RadioButton(selected=selected,onClick=null,enabled=enabled)
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                 Text(title,style=if(selected) MaterialTheme.typography.titleMedium.copy(fontWeight=androidx.compose.ui.text.font.FontWeight.Bold) else MaterialTheme.typography.titleMedium,maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                Text(subtitle,style=MaterialTheme.typography.bodyMedium,color=if(selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,maxLines=2)
+                Text(subtitle,style=MaterialTheme.typography.bodyMedium,color=if(selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             }
             if(trailing!=null) CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                Text(trailing,style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(trailing,modifier=Modifier.widthIn(max=96.dp),maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

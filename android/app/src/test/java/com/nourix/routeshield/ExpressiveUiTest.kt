@@ -27,7 +27,7 @@ class ExpressiveUiTest {
         File("build/ui-qa").mkdirs()
         compose.waitForIdle()
         compose.activity.window.decorView.captureRoboImage("build/ui-qa/connection-light.png")
-        compose.onNodeWithText("Kill Switch · Android protection").performScrollTo();compose.waitForIdle()
+        compose.onNodeWithText("Configure system Kill Switch").performScrollTo();compose.waitForIdle()
         compose.onNodeWithText("Configure system Kill Switch").assertExists()
         compose.activity.window.decorView.captureRoboImage("build/ui-qa/kill-switch-light.png")
         for(label in listOf("Profiles","Applications","Settings")) {
