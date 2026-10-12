@@ -11,8 +11,6 @@
 
 RouteShield is a Windows VPN controller built around the official [sing-box](https://github.com/SagerNet/sing-box) core. Choose which applications use the tunnel, which bypass it, or route the entire system. It also supports browser-level routing through companion Firefox and Chrome extensions.
 
-[فارسی](README.fa.md) · [Releases](https://github.com/Ali-Nourix/RouteShield/releases) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md)
-
 [فارسی](README.fa.md) · [**Releases**](https://github.com/Ali-Nourix/RouteShield/releases) · [**Changelog**](CHANGELOG.md) · [**Security**](SECURITY.md)
 
 </div>
