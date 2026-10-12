@@ -1,0 +1,28 @@
+name: Promote release and clean merged branches
+on:
+  push:
+    branches: [main]
+    paths: ['ci/repository-maintenance.json']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: routeshield-release-publication
+  cancel-in-progress: false
+jobs:
+  maintain:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: android-release
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Promote existing release and remove only merged branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ci/scripts/promote-release-and-clean.py

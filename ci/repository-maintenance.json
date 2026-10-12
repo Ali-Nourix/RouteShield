@@ -1,0 +1,48 @@
+{
+  "tag": "v1.7.1",
+  "release_id": 410803253,
+  "source_sha": "9dc0b4741863591a488c6e618b81c4f5fc8cf51d",
+  "assets": {
+    "BUILD-PROVENANCE.json": {
+      "size": 1758,
+      "digest": "sha256:a2bc881be0a150989b2cf92f2e19d2384fbeae11887d529aa5c7f24aac532c1b"
+    },
+    "INSTALL.txt": {
+      "size": 1001,
+      "digest": "sha256:998745181d5156228cd7029492dd1727bdfd3551545bb29324c1eec5bba84150"
+    },
+    "RouteShield-1.7.1-win-x64.zip": {
+      "size": 100135913,
+      "digest": "sha256:f1df718c62d50f6973bd05c98bba1313ceebf3b8a94d9f2f4de27149882b296f"
+    },
+    "RouteShield-Android-arm64-v8a-build17.apk": {
+      "size": 82327760,
+      "digest": "sha256:9b118a443cf8d9fa4c3f5b052bd1b901720acdb1072e95894ead29a5c6345cd5"
+    },
+    "RouteShield-Android-x86_64-build17.apk": {
+      "size": 86709306,
+      "digest": "sha256:8aaa66d3e653b57956abf750f367d4338741bd77cbd581e26d710a23880574ae"
+    },
+    "RouteShield-Extension-chrome-1.7.1.zip": {
+      "size": 108191,
+      "digest": "sha256:daffed723f0530f44ad4e11779f22dca33ef4344c79faddbe5ddf5af518961ae"
+    },
+    "RouteShield-Extension-firefox-1.7.1.xpi": {
+      "size": 106747,
+      "digest": "sha256:88116883d6ce856f546f6cdcb370330536d6363ae05af0873d6c9f15382190e7"
+    },
+    "SHA256SUMS.txt": {
+      "size": 783,
+      "digest": "sha256:fcd0b3b1a56a43904c76c65faf3f193521c81eb22ab197b29750d86441a5f187"
+    },
+    "signing-certificate-sha256.txt": {
+      "size": 65,
+      "digest": "sha256:0fc6c34d2ce5de1d66d3301a38fe25ccec4319a7851695ca64b18a9e48c4d886"
+    }
+  },
+  "delete_merged_branches": {
+    "fix/android-runtime-20261012": "df0e8b26fce1835826f551f605a4cd89e3bd8e33",
+    "fix/publish-separate-release-assets-20261012": "397b75457a709d82123241728be4920654da7a04",
+    "fix/security-and-desktop-polish-20261012": "8569f44f5f4ee0a302aa14a2f4c69348418c19c8"
+  }
+}
