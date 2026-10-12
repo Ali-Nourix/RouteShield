@@ -32,7 +32,7 @@ import java.util.Locale
                 Text(labels[page],style=MaterialTheme.typography.headlineLarge)
                 if(model.busy) ShieldBusy()
                 when(page) {
-                    0->ConnectionScreen(model,onConnect)
+                    0->ConnectionScreen(model,onConnect,onSystemVpn)
                     1->ProfilesScreen(model)
                     2->ApplicationsScreen(model)
                     else->SettingsScreen(model,onSystemVpn,onExport)
@@ -42,9 +42,9 @@ import java.util.Locale
         }
     }
 }
-@Composable private fun ConnectionScreen(model:ShieldModel,onConnect:()->Unit) {
+@Composable private fun ConnectionScreen(model:ShieldModel,onConnect:()->Unit,onVpn:()->Unit) {
     val value=model.tunnel
-    val resource=when(value.stage) {"starting"->R.string.starting;"ready"->R.string.ready;"online"->R.string.online;"waiting"->R.string.waiting;"error"->R.string.error;"permission"->R.string.permission;"stopping"->R.string.stopping;else->R.string.idle}
+    val resource=when(value.stage) {"starting"->R.string.starting;"ready"->R.string.ready;"online"->R.string.online;"waiting"->R.string.waiting;"degraded"->R.string.degraded;"error"->R.string.error;"permission"->R.string.permission;"stopping"->R.string.stopping;else->R.string.idle}
     val nodes=ProfileConfig.activeNodes(model.saved)
     ShieldPanel(emphasized=true) {
         Text(stringResource(resource),style=MaterialTheme.typography.headlineMedium)
@@ -62,6 +62,12 @@ import java.util.Locale
         Metric(stringResource(R.string.exit_ip),value.exitIp ?: "—")
         Text(stringResource(R.string.metric_source),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
+    ShieldPanel(compact=true) {
+        Text(stringResource(R.string.kill_switch),style=MaterialTheme.typography.titleMedium)
+        Text(stringResource(when(value.lockdown) {true->R.string.kill_active;false->R.string.kill_off;else->R.string.kill_unknown}),style=MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.kill_detail),style=MaterialTheme.typography.bodySmall)
+        ShieldTextAction(stringResource(R.string.kill_setup),onVpn)
+    }
     Text(stringResource(R.string.safety),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
 }
 @Composable private fun Metric(label:String,value:String) {
@@ -76,6 +82,7 @@ private fun bytes(value:Long):String = if(value>=1024*1024) String.format(Locale
     var visible by remember {mutableIntStateOf(20)}
     val library=model.saved.optJSONArray("library") ?: JSONArray()
     val edit=!model.tunnel.running && !model.busy
+    val switchable=!model.busy && model.tunnel.stage !in setOf("starting","stopping")
     ShieldButton(stringResource(R.string.import_profiles),{importing=true},enabled=edit,primary=true,modifier=Modifier.fillMaxWidth())
     if(library.length()==0) ShieldPanel { Text(stringResource(R.string.empty),style=MaterialTheme.typography.bodyLarge) }
     else {
@@ -100,15 +107,15 @@ private fun bytes(value:Long):String = if(value>=1024*1024) String.format(Locale
         ShieldPanel(compact=true) {
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                 Text(stringResource(R.string.nodes),style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f))
-                ShieldTextAction(stringResource(R.string.test_nodes_short),{model.testNodes()},enabled=model.tunnel.running && model.tunnel.stage!="stopping" && model.saved.optInt("selected")==0 && nodes.length()>1 && !model.busy)
+                ShieldTextAction(stringResource(R.string.test_nodes_short),{model.testNodes()},enabled=model.tunnel.running && model.tunnel.stage!="stopping" && nodes.length()>1 && !model.busy)
             }
-            ShieldNodeRow(stringResource(R.string.auto_short),stringResource(R.string.auto_detail),null,model.saved.optInt("selected")==0,edit) {model.select(index,0)}
+            ShieldNodeRow(stringResource(R.string.auto_short),stringResource(R.string.auto_detail),model.tunnel.selected?.let {tag-> tag.removePrefix("node-").toIntOrNull()?.let {i->if(i in 0 until nodes.length()) nodes.getJSONObject(i).optString("tag") else null} },model.saved.optInt("selected")==0,switchable) {model.select(index,0)}
             ShieldRule()
             val order=(0 until nodes.length()).toList().let {list->if(model.saved.optBoolean("sortLatency")) list.sortedBy {model.tunnel.delays["node-$it"] ?: Int.MAX_VALUE} else list}
             order.take(visible).forEach {node->
                 val item=nodes.getJSONObject(node); val delay=model.tunnel.delays["node-$node"]
                 ShieldNodeRow(item.optString("tag"),item.optString("type").uppercase(),delay?.let {"$it ms"} ?: "—",
-                    model.saved.optInt("selected")==node+1,edit) {model.select(index,node+1)}
+                    model.saved.optInt("selected")==node+1,switchable) {model.select(index,node+1)}
 
             }
             if(visible<order.size) ShieldButton(stringResource(R.string.show_more),{visible+=20},modifier=Modifier.fillMaxWidth())
@@ -143,6 +150,7 @@ private fun bytes(value:Long):String = if(value>=1024*1024) String.format(Locale
         Text(stringResource(R.string.app_vpn_detail),style=MaterialTheme.typography.bodyMedium)
         if(model.saved.optString("mode","all")=="include") Text(stringResource(R.string.legacy_include),style=MaterialTheme.typography.bodySmall)
         ShieldSetting(stringResource(R.string.auto_iranian_apps),stringResource(R.string.auto_iranian_detail),model.saved.optBoolean("autoDomesticApps"),{model.settings {put("autoDomesticApps",it)}},edit && model.saved.optString("mode","all")!="include")
+        Text(stringResource(R.string.catalog_coverage,applications.count {it.first in AppRoutingPolicy.domesticPackages},AppRoutingPolicy.domesticPackages.size),style=MaterialTheme.typography.bodySmall)
         ShieldTextAction(stringResource(R.string.reset_app_policy),{model.settings {put("mode","all").put("apps",JSONArray()).put("forceVpnApps",JSONArray()).put("autoDomesticApps",false)}},enabled=edit)
     }
     Text(stringResource(R.string.apps_hint),style=MaterialTheme.typography.bodySmall)
@@ -174,6 +182,7 @@ private fun bytes(value:Long):String = if(value>=1024*1024) String.format(Locale
         ShieldSetting(stringResource(R.string.fragment_tls),stringResource(R.string.fragment_detail),model.saved.optBoolean("fragmentTls"),{model.settings {put("fragmentTls",it)}},edit)
         ShieldSetting(stringResource(R.string.refuse_quic),stringResource(R.string.quic_detail),model.saved.optBoolean("refuseQuic",true),{model.settings {put("refuseQuic",it)}},edit)
         ShieldSetting(stringResource(R.string.domestic),stringResource(R.string.domestic_detail),model.saved.optBoolean("domestic"),{model.settings {put("domestic",it)}},edit)
+        ShieldSetting(stringResource(R.string.prefer_stability),stringResource(R.string.stability_detail),model.saved.optBoolean("preferStability",true),{model.settings {put("preferStability",it)}},edit)
         ShieldSetting(stringResource(R.string.sort_latency),stringResource(R.string.latency_detail),model.saved.optBoolean("sortLatency"),{model.settings {put("sortLatency",it)}},!model.busy)
         ShieldButton(stringResource(R.string.vpn_settings),onVpn)
     }

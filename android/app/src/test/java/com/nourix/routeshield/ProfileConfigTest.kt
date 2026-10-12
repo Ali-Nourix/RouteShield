@@ -39,7 +39,21 @@ class ProfileConfigTest {
         val root = JSONObject(ProfileConfig.runtime(nodes, 0)); val group = root.getJSONArray("outbounds").getJSONObject(2)
         assertEquals("urltest", group.getString("type")); assertFalse(group.getBoolean("interrupt_exist_connections")); assertEquals(150, group.getInt("tolerance"))
         Files.createDirectories(Paths.get("build/qa-fixtures")); Files.write(Paths.get("build/qa-fixtures/automatic.json"), root.toString().toByteArray())
-        assertEquals(2, JSONObject(ProfileConfig.runtime(nodes, 1)).getJSONArray("outbounds").length())
+        val manual=JSONObject(ProfileConfig.runtime(nodes, 2)).getJSONArray("outbounds")
+        assertEquals(5,manual.length()); val selector=manual.getJSONObject(3)
+        assertEquals("selector",selector.getString("type"));assertEquals("node-1",selector.getString("default"))
+        assertEquals("auto",JSONObject(ProfileConfig.runtime(nodes,0)).getJSONArray("outbounds").getJSONObject(3).getString("default"))
+        Files.write(Paths.get("build/qa-fixtures/manual-selector.json"),ProfileConfig.runtime(nodes,2).toByteArray())
+    }
+    @Test fun speed_priority_uses_strict_lowest_latency_without_tls_downgrades() {
+        val nodes=ProfileConfig.import(samples.getValue("trojan")+"\n"+samples.getValue("anytls"))
+        val root=JSONObject(ProfileConfig.runtime(nodes,0,JSONObject().put("preferStability",false)))
+        assertEquals(0,root.getJSONArray("outbounds").getJSONObject(2).getInt("tolerance"))
+    }
+    @Test fun selector_keeps_all_nodes_and_maps_single_node_automatic_safely() {
+        assertEquals("node-0",ProfileConfig.selectionTag(1,0));assertEquals("auto",ProfileConfig.selectionTag(3,0))
+        assertEquals("node-2",ProfileConfig.selectionTag(3,3))
+        try {ProfileConfig.selectionTag(2,3);fail()} catch(_:IllegalArgumentException) {}
     }
     @Test fun duplicates_do_not_create_duplicate_nodes() { val link = samples.getValue("trojan"); assertEquals(1, ProfileConfig.import("$link\n$link").length()) }
     @Test fun base64_subscriptions_are_imported() {

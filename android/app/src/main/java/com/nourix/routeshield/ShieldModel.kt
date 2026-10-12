@@ -49,14 +49,27 @@ class ShieldModel(application: Application) : AndroidViewModel(application) {
         item.put("nodes",nodes).put("usage",result.usage).put("updated",System.currentTimeMillis()); data.put("selected",0)
         store.save(data); data
     }
-    fun select(group:Int, node:Int=0) = io { val data=JSONObject(saved.toString()).put("active",group).put("selected",node); store.save(data); data }
+    fun select(group:Int, node:Int=0) = io {
+        val data=JSONObject(saved.toString())
+        require(group in 0 until data.getJSONArray("library").length())
+        val nodes=data.getJSONArray("library").getJSONObject(group).getJSONArray("nodes")
+        val tag=ProfileConfig.selectionTag(nodes.length(),node)
+        if(tunnel.running) {
+            require(group==data.optInt("active",0) && tunnel.stage in setOf("ready","online","waiting","degraded"))
+            Libbox.newStandaloneCommandClient().selectOutbound("proxy",tag)
+            TunnelService.selectionChanged(node==0 && nodes.length()>1)
+            if(tag=="auto") runCatching { Libbox.newStandaloneCommandClient().urlTest("auto") }
+            event("Changed active route without restarting VPN")
+        }
+        data.put("active",group).put("selected",node); store.save(data); data
+    }
     fun delete(index:Int) = io { val data=JSONObject(saved.toString()); data.getJSONArray("library").remove(index); data.put("active",0).put("selected",0); store.save(data); data }
     fun settings(update:JSONObject.()->Unit) = io { val data=JSONObject(saved.toString()).apply(update); store.save(data); data }
     fun clear() = io { store.clear(); JSONObject().put("library",JSONArray()) }
     fun event(text:String) { events.add("${Instant.now()}  $text"); while(events.size>100) events.removeAt(0) }
     fun testNodes() {
         if(!tunnel.running || busy) return
-        viewModelScope.launch { runCatching { withContext(Dispatchers.IO) { Libbox.newStandaloneCommandClient().urlTest("proxy") } }
+        viewModelScope.launch { runCatching { withContext(Dispatchers.IO) { Libbox.newStandaloneCommandClient().urlTest("auto") } }
             .onSuccess { event("Requested native node measurements") }.onFailure { message="Node test requires an active automatic group." } }
     }
     fun diagnostics():String = "RouteShield Android ${BuildConfig.VERSION_NAME}\nVariant: ${BuildConfig.BUILD_TYPE}\nState: ${tunnel.stage}\n" +

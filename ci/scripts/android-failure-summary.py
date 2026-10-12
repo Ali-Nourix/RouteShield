@@ -15,4 +15,5 @@ if not found:
     path=Path(os.environ['RUNNER_TEMP'])/'android-preview-build.log'
     if path.exists():
         lines=path.read_text(errors='replace').splitlines()
-        emit('\n'.join(lines[-65:]))
+        causes=[line for line in lines if 'Caused by:' in line or 'No space left' in line or 'OutOfMemoryError' in line]
+        emit('\n'.join(causes[-12:]+lines[-45:]))

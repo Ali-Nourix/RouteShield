@@ -83,13 +83,13 @@
 <string name="active_profile">پروفایل فعال</string>
 <string name="nodes">نودها</string>
 <string name="auto_short">انتخاب خودکار</string>
-<string name="auto_detail">انتخاب نود پاسخ‌گو، بدون قطع بی‌دلیل نشست‌های سالم.</string>
+<string name="auto_detail">تأخیر HTTPS، نه سرعت دانلود؛ با اولویت پایداری انتخابی.</string>
 <string name="show_more">نمایش نودهای بیشتر</string>
-<string name="nodes_hint">خط تیره یعنی هنوز اندازه‌گیری نشده. برای تغییر نود ابتدا اتصال را قطع کن.</string>
+<string name="nodes_hint">هنگام اتصال می‌توانی نود را عوض کنی؛ نشست‌های جاری ممکن است دوباره وصل شوند. خط تیره یعنی اندازه‌گیری نشده. تغییر گروه پروفایل هنوز نیاز به قطع اتصال دارد.</string>
 <string name="app_vpn_title">VPN برای برنامه‌ها</string>
 <string name="app_vpn_detail">ابتدا همهٔ سوییچ‌ها روشن‌اند. با خاموش‌کردن هرکدام، فقط همان اپ مستقیم وصل می‌شود.</string>
 <string name="auto_iranian_apps">استثنای خودکار اپ‌های ایرانی شناخته‌شده</string>
-<string name="auto_iranian_detail">فهرست محدود و محلی شناسهٔ اپ؛ انتخاب دستی تو اولویت دارد. برای اعمال دوباره وصل شو.</string>
+<string name="auto_iranian_detail">فهرست گسترده‌تر اما محدود و آفلاین شناسه‌ها؛ انتخاب دستی اولویت دارد. برای اعمال دوباره وصل شو. تشخیص از روی نام یا ارسال فهرست اپ‌ها انجام نمی‌شود.</string>
 <string name="reset_app_policy">بازنشانی به همه</string>
 <string name="legacy_include">سیاست قبلی «فقط انتخاب‌شده‌ها» حفظ شده. برای فعال‌شدن همه، بازنشانی کن.</string>
 <string name="app_vpn_on">از VPN استفاده می‌کند</string>
@@ -106,4 +106,14 @@
 <string name="color_amber">کهربایی</string>
 <string name="color_slate">خاکستری</string>
 <string name="test_nodes_short">تست نودها</string>
+<string name="kill_switch">کیل‌سوییچ · محافظت اندروید</string>
+<string name="kill_active">مسدودسازی اتصال بدون VPN: روشن، طبق گزارش اندروید.</string>
+<string name="kill_off">مسدودسازی اتصال بدون VPN: خاموش، طبق گزارش اندروید.</string>
+<string name="kill_unknown">وضعیت محافظت سیستم نامشخص است؛ برای خواندن وضعیت اندروید وصل شو.</string>
+<string name="kill_detail">در تنظیمات اندروید، VPN همیشه‌روشن و مسدودسازی اتصال بدون VPN را فعال کن؛ حتی با توقف برنامه هم محافظت می‌کند. اپ‌های مستثنا ممکن است مسدود شوند. قطع عمدی اتصال هم ممکن است تا خاموش‌کردن قفل سیستم اینترنت را مسدود نگه دارد.</string>
+<string name="kill_setup">تنظیم کیل‌سوییچ سیستم</string>
+<string name="catalog_coverage">اپ‌های نصب‌شدهٔ شناخته‌شده: %1$d · فهرست آفلاین: %2$d شناسه. اپ‌های ناشناخته با VPN می‌مانند.</string>
+<string name="degraded">در حال بررسی پایداری اتصال…</string>
+<string name="prefer_stability">اولویت پایداری در انتخاب خودکار</string>
+<string name="stability_detail">روشن: تحمل اختلاف ۱۵۰ میلی‌ثانیه و نادیده‌گرفتن یک خطای گذرا پس از اتصال سالم. خاموش: اولویت کمترین تأخیر اندازه‌گیری‌شده. نشست‌های سالم حفظ می‌شوند و بازگشت خودکار به مسیر مستقیم انجام نمی‌شود.</string>
 </resources>

@@ -4,6 +4,8 @@ import androidx.activity.compose.setContent
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.assertIsEnabled
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Before
 import org.junit.Rule
@@ -25,9 +27,16 @@ class ExpressiveUiTest {
         File("build/ui-qa").mkdirs()
         compose.waitForIdle()
         compose.activity.window.decorView.captureRoboImage("build/ui-qa/connection-light.png")
+        compose.onNodeWithText("Configure system Kill Switch").performScrollTo();compose.waitForIdle()
+        compose.onNodeWithText("Configure system Kill Switch").assertExists()
+        compose.activity.window.decorView.captureRoboImage("build/ui-qa/kill-switch-light.png")
         for(label in listOf("Profiles","Applications","Settings")) {
             compose.onNodeWithText(label).performClick(); compose.waitForIdle()
             compose.activity.window.decorView.captureRoboImage("build/ui-qa/${label.lowercase()}-light.png")
+            if(label=="Settings") {
+                compose.onNodeWithText("Prefer stable automatic routes").performScrollTo();compose.waitForIdle()
+                compose.activity.window.decorView.captureRoboImage("build/ui-qa/stability-settings-light.png")
+            }
         }
     }
 
@@ -67,6 +76,9 @@ class ExpressiveUiTest {
         }
         compose.waitForIdle();compose.onNodeWithText("Profiles").performClick();compose.waitForIdle()
         File("build/ui-qa").mkdirs();compose.activity.window.decorView.captureRoboImage("build/ui-qa/profiles-populated-blue.png")
+        compose.runOnUiThread {TunnelStatus.update("online",50)};compose.waitForIdle()
+        compose.onNodeWithText("Frankfurt").assertIsEnabled()
+        compose.onNodeWithText("Automatic").assertIsEnabled()
     }
     @Test fun theme_color_choices_are_visible() {
         compose.waitForIdle();compose.onNodeWithText("Settings").performClick();compose.waitForIdle()

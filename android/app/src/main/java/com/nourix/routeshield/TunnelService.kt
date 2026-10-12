@@ -16,21 +16,33 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class TunnelService : VpnService(), CommandServerHandler {
-    companion object { const val STOP = "com.nourix.routeshield.STOP"; const val CHANNEL = "vpn"; const val ID = 31; private val lifecycle = Executors.newSingleThreadScheduledExecutor() }
+    companion object { const val STOP = "com.nourix.routeshield.STOP"; const val CHANNEL = "vpn"; const val ID = 31; private val lifecycle = Executors.newSingleThreadScheduledExecutor()
+        @Volatile private var active: TunnelService? = null
+        fun requestStop(): Boolean = active?.let { it.shutdown(); true } ?: false
+        fun refreshProtection() { active?.readProtection() }
+        fun selectionChanged(isAutomatic:Boolean) { active?.automatic=isAutomatic }
+    }
     private val executor = lifecycle
-    private val healthExecutor = Executors.newSingleThreadScheduledExecutor()
+    private var healthExecutor = Executors.newSingleThreadScheduledExecutor()
     @Volatile private var activeProbe: HttpURLConnection? = null
     private var server: CommandServer? = null
     private var telemetry: CommandClient? = null
     private var lastExitCheck = 0L
     private var platform: NativePlatform? = null
     private val retestBudget = RetestBudget()
-    private var automatic = false
+    private var healthGate = HealthGate()
+    @Volatile private var automatic = false
+    @Volatile private var shutdownComplete = false
     private var health: java.util.concurrent.ScheduledFuture<*>? = null
     @Volatile var closing = false; private set
     @Volatile var tun: ParcelFileDescriptor? = null
+    override fun onCreate() { super.onCreate(); active=this }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == STOP) { stopSelf(); return START_NOT_STICKY }
+        if (intent?.action == STOP) { shutdown(); return START_NOT_STICKY }
+        synchronized(this) {
+            if(closing && !shutdownComplete) return START_NOT_STICKY
+            if(closing) { closing=false; shutdownComplete=false; healthExecutor=Executors.newSingleThreadScheduledExecutor() }
+        }
         if (prepare(this) != null) { TunnelStatus.update("permission"); stopSelf(); return START_NOT_STICKY }
         showNotification("starting") // foreground deadline, before native initialization
         executor.execute { if (server == null && !closing) startTunnel() }
@@ -40,6 +52,7 @@ class TunnelService : VpnService(), CommandServerHandler {
         TunnelStatus.update("starting")
         try {
             val saved = ProfileStore(this).load()
+            healthGate=HealthGate(saved.optBoolean("preferStability",true))
             automatic = saved.optInt("selected", 0) == 0 && ProfileConfig.activeNodes(saved).length() > 1
             val config = ProfileConfig.runtime(ProfileConfig.activeNodes(saved), saved.optInt("selected", 0), saved)
             val directory = java.io.File(filesDir, "engine").apply { mkdirs() }
@@ -65,34 +78,49 @@ class TunnelService : VpnService(), CommandServerHandler {
                     if(!closing && status.trafficAvailable) TunnelStatus.metrics(status.uplink,status.downlink,status.uplinkTotal,status.downlinkTotal)
                 }
                 override fun writeGroups(groups:OutboundGroupIterator) {
+                    val selected=mutableMapOf<String,String>(); val delays=mutableMapOf<String,Int>()
                     while(groups.hasNext()) {
-                        val group=groups.next(); if(group.tag!="proxy") continue
-                        val delays=mutableMapOf<String,Int>(); val items=group.items
+                        val group=groups.next(); selected[group.tag]=group.selected
+                        val items=group.items
                         while(items.hasNext()) { val item=items.next(); if(item.getURLTestDelay()>0) delays[item.tag]=item.getURLTestDelay() }
-                        if(!closing) TunnelStatus.group(group.selected,delays)
                     }
+                    val route=selected["proxy"]
+                    if(!closing) TunnelStatus.group(if(route=="auto") selected["auto"] else route,delays)
                 }
             },options).also { it.connect() }
             check(!closing)
+            readProtection()
             TunnelStatus.update("ready"); showNotification("ready")
+            if(automatic) runCatching { Libbox.newStandaloneCommandClient().urlTest("auto") }
             health = healthExecutor.scheduleWithFixedDelay({ checkHealth() }, 0, 15, TimeUnit.SECONDS)
         } catch (e: Exception) {
             // Do not put native errors/configs/keys into logcat or notifications.
-            if(!closing) TunnelStatus.update("error"); stopSelf()
+            if(!closing) TunnelStatus.update("error"); shutdown()
         }
+    }
+    private fun readProtection() {
+        if(!closing && Build.VERSION.SDK_INT>=29) runCatching { TunnelStatus.protection(isAlwaysOn,isLockdownEnabled) }
     }
     private fun checkHealth() {
         if (closing) return
+        readProtection()
         var connection: HttpURLConnection? = null
         try {
             val started = System.nanoTime()
-            connection = URL("https://www.gstatic.com/generate_204").openConnection() as HttpURLConnection
-            activeProbe = connection
-            connection.connectTimeout = 5000; connection.readTimeout = 5000
-            connection.instanceFollowRedirects = false; connection.useCaches = false
-            check(connection.responseCode == 204)
+            // A probe-provider outage is not enough evidence to churn the VPN route.
+            var success=false
+            for(endpoint in listOf("https://www.gstatic.com/generate_204","https://cp.cloudflare.com/generate_204")) {
+                if(closing) return
+                val probe=URL(endpoint).openConnection() as HttpURLConnection; connection=probe; activeProbe=probe
+                probe.connectTimeout=3500; probe.readTimeout=3500
+                probe.instanceFollowRedirects=false; probe.useCaches=false
+                success=runCatching {probe.responseCode==204}.getOrDefault(false)
+                probe.disconnect();activeProbe=null
+                if(success) break
+            }
+            check(success)
             val latency = (System.nanoTime() - started) / 1_000_000
-            if (!closing) { retestBudget.healthy(); TunnelStatus.update("online", latency); showNotification("online") }
+            if (!closing) { retestBudget.healthy(); healthGate.success(); TunnelStatus.update("online", latency); showNotification("online") }
             val now=android.os.SystemClock.elapsedRealtime()
             if(!closing && now-lastExitCheck>60_000) {
                 lastExitCheck=now
@@ -109,11 +137,12 @@ class TunnelService : VpnService(), CommandServerHandler {
                 }
             }
         } catch (e: Exception) {
-            if (!closing) { TunnelStatus.update("waiting"); showNotification("waiting") }
+            val recover=healthGate.failureNeedsRecovery()
+            if (!closing) { val stage=if(recover) "waiting" else "degraded"; TunnelStatus.update(stage); showNotification(stage) }
             // Immediately remeasure the automatic group on an outage, then back off. Native
             // urltest keeps healthy existing sessions rather than unconditionally closing them.
-            if (!closing && automatic && retestBudget.permit(android.os.SystemClock.elapsedRealtime())) {
-                runCatching { Libbox.newStandaloneCommandClient().urlTest("proxy") }
+            if (!closing && recover && automatic && retestBudget.permit(android.os.SystemClock.elapsedRealtime())) {
+                runCatching { Libbox.newStandaloneCommandClient().urlTest("auto") }
             }
             // Keep the TUN up: loss of connectivity is not a request to send traffic directly.
         } finally { connection?.disconnect(); activeProbe=null }
@@ -130,25 +159,33 @@ class TunnelService : VpnService(), CommandServerHandler {
         if (Build.VERSION.SDK_INT >= 34) startForeground(ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
         else startForeground(ID, notification)
     }
-    override fun onDestroy() {
+    /** stopService alone does not destroy a service still bound by Android's VPN manager. */
+    @Synchronized private fun shutdown() {
+        if(closing) return
         closing = true
         if(TunnelStatus.value.stage !in setOf("error","permission")) TunnelStatus.update("stopping")
         health?.cancel(true); activeProbe?.disconnect(); healthExecutor.shutdownNow()
-        // Unblock the native packet reader BEFORE closeService/telemetry can wait on it.
         val descriptor=tun; tun=null; runCatching { descriptor?.close() }
+        stopForeground(STOP_FOREGROUND_REMOVE)
         executor.execute {
             val okay=TunnelTeardown.close(
-                tun={ val late=tun; tun=null; late?.close() },
+                tun={ synchronized(this) { val late=tun; tun=null; late?.close() } },
                 platform={ platform?.close(); platform=null },
                 coreService={ server?.closeService() },
                 coreServer={ server?.close(); server=null },
                 telemetry={ telemetry?.disconnect(); telemetry=null })
+            shutdownComplete=true
             if (TunnelStatus.value.stage !in setOf("error","permission")) TunnelStatus.update(if(okay) "idle" else "error")
+            stopSelf()
         }
-        stopForeground(STOP_FOREGROUND_REMOVE); super.onDestroy()
     }
-    override fun onRevoke() { stopSelf() }
-    override fun serviceStop() { stopSelf() }
+    @Synchronized fun attachTun(descriptor:ParcelFileDescriptor):Int {
+        if(closing) { descriptor.close(); error("VPN startup was cancelled") }
+        tun?.close(); tun=descriptor; return descriptor.fd
+    }
+    override fun onDestroy() { shutdown(); if(active===this) active=null; super.onDestroy() }
+    override fun onRevoke() { shutdown() }
+    override fun serviceStop() { shutdown() }
     override fun serviceReload() { /* no remote reload path; policy changes require an explicit restart */ }
     override fun getSystemProxyStatus() = SystemProxyStatus()
     override fun setSystemProxyEnabled(enabled: Boolean) { check(!enabled) { "System proxy disabled" } }
@@ -157,6 +194,6 @@ class TunnelService : VpnService(), CommandServerHandler {
     override fun writeDebugMessage(message: String?) { /* intentionally not persisted */ }
     private fun statusResource(stage: String) = when(stage) {
         "starting" -> R.string.starting; "ready" -> R.string.ready; "online" -> R.string.online
-        "waiting" -> R.string.waiting; "stopping" -> R.string.stopping; else -> R.string.idle
+        "waiting" -> R.string.waiting; "degraded" -> R.string.degraded; "stopping" -> R.string.stopping; else -> R.string.idle
     }
 }

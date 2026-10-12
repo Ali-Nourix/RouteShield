@@ -4,6 +4,11 @@ import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 class AppRoutingPolicyTest {
+    @Test fun expanded_catalog_covers_verified_apps_without_prefix_guesses() {
+        val data=JSONObject().put("autoDomesticApps",true)
+        for(pkg in listOf("com.aparat.filimo","com.mydigipay.app.android","taxi.tap30.passenger.play","ir.balad","ir.nasim")) assertFalse(AppRoutingPolicy.enabled(data,pkg))
+        assertTrue(AppRoutingPolicy.enabled(data,"ir.balad.fake"));assertTrue(AppRoutingPolicy.enabled(data,"ir.bank.unknown"))
+    }
     @Test fun first_launch_routes_every_application_through_vpn() { assertTrue(AppRoutingPolicy.enabled(JSONObject(),"com.example")); assertTrue(AppRoutingPolicy.enabled(JSONObject(),"com.digikala")) }
     @Test fun disabling_one_switch_only_excludes_that_application() { val data=JSONObject(); AppRoutingPolicy.change(data,"com.example",false); assertFalse(AppRoutingPolicy.enabled(data,"com.example")); assertTrue(AppRoutingPolicy.enabled(data,"com.other")) }
     @Test fun automatic_rules_are_explicit_exact_and_offline() { val data=JSONObject().put("autoDomesticApps",true); assertFalse(AppRoutingPolicy.enabled(data,"com.digikala")); assertTrue(AppRoutingPolicy.enabled(data,"com.digikala.fake")); assertTrue(AppRoutingPolicy.enabled(data,"ir.unknown")) }
