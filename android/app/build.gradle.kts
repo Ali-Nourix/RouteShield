@@ -1,4 +1,14 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("org.jetbrains.kotlin.plugin.compose") }
+val signingKeys = listOf("ANDROID_KEYSTORE_PATH", "ANDROID_KEYSTORE_PASSWORD", "ANDROID_KEY_ALIAS", "ANDROID_KEY_PASSWORD")
+val signingValues = signingKeys.associateWith { System.getenv(it).orEmpty() }
+val signingRequested = signingValues.values.any { it.isNotBlank() } || System.getenv("REQUIRE_ANDROID_SIGNING") == "true"
+if (signingRequested) {
+    require(signingValues.values.all { it.isNotBlank() }) { "Android signing configuration is incomplete; refusing a signing fallback." }
+    require(file(signingValues.getValue("ANDROID_KEYSTORE_PATH")).isFile) { "Android signing keystore is missing." }
+}
+val ciVersionCode = System.getenv("ANDROID_VERSION_CODE")?.let {
+    requireNotNull(it.toIntOrNull()?.takeIf { n -> n > 0 }) { "ANDROID_VERSION_CODE must be a positive integer." }
+} ?: 1
 android {
     namespace = "com.nourix.routeshield"
     compileSdk = 35
@@ -6,7 +16,7 @@ android {
         applicationId = "com.nourix.routeshield"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        versionCode = ciVersionCode
         versionName = "0.1.0-preview"
     }
     splits { abi { isEnable = true; reset(); include("arm64-v8a", "x86_64"); isUniversalApk = false } }
@@ -16,9 +26,18 @@ android {
     packaging { jniLibs.useLegacyPackaging = false; resources.excludes += listOf("META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*") }
     buildFeatures { compose = true; buildConfig = true }
     bundle { language { enableSplit = false } }
+    signingConfigs {
+        if (signingRequested) create("production") {
+            storeFile = file(signingValues.getValue("ANDROID_KEYSTORE_PATH"))
+            storePassword = signingValues.getValue("ANDROID_KEYSTORE_PASSWORD")
+            keyAlias = signingValues.getValue("ANDROID_KEY_ALIAS")
+            keyPassword = signingValues.getValue("ANDROID_KEY_PASSWORD")
+        }
+    }
     buildTypes {
         debug { applicationIdSuffix = ".dev"; versionNameSuffix = "-dev" }
         release {
+            if (signingRequested) signingConfig = signingConfigs.getByName("production")
             isMinifyEnabled = true; isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
