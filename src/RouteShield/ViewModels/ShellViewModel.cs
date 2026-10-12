@@ -1641,7 +1641,7 @@ public sealed class ShellViewModel : Observable
             _ = _host.AlertAsync(
                 "Browser extension",
                 "The extension folder is not part of this build",
-                "Release packages carry an \"extensions\" folder with the Firefox and Chrome add-ons. Download the package from GitHub, or build with build.cmd.");
+                "Browser add-ons are separate GitHub Release downloads. Extract the Chrome ZIP into extensions/chrome, or download the Firefox XPI separately. The Windows ZIP does not bundle add-on code.");
             return;
         }
 

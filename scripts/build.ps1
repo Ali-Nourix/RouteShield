@@ -317,7 +317,7 @@ function Test-FirefoxAddon([string]$Staging) {
 
 <#
 .SYNOPSIS
-    Stages both browser extensions next to the app and packages each for the release.
+    Stages browser extensions outside the application ZIP and packages each separately for the release.
 .DESCRIPTION
     Each browser gets the shared popup and bridge client plus its own manifest and
     background script. The manifest version is rewritten to the package version so the
@@ -333,7 +333,16 @@ function Copy-Extensions {
     Step 'Packaging the browser extensions'
 
     $source = Join-Path $Root 'extension'
-    $target = Join-Path $Dist 'extensions'
+    $target = Join-Path $Root 'obj\extension-packages'
+    $helpFolder = Join-Path $Dist 'extensions'
+    Remove-Item $helpFolder -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $helpFolder | Out-Null
+    @'
+Browser extensions are separate downloads from GitHub Releases. No extension code or installable archive is bundled in the Windows ZIP.
+https://github.com/Ali-Nourix/RouteShield/releases
+Chrome: extract the Chrome ZIP into extensions/chrome, then Load unpacked in chrome://extensions.
+Firefox: download the XPI separately. Standard Firefox needs Mozilla/AMO signing for permanent installation; use about:debugging for a temporary test.
+'@ | Set-Content (Join-Path $helpFolder 'README.txt') -Encoding utf8
     New-Item -ItemType Directory -Force -Path $Artifacts, $target | Out-Null
 
     $manifestVersion = ($PackageVersion -split '-')[0]
@@ -362,8 +371,7 @@ function Copy-Extensions {
         New-ExtensionArchive -Source $staging -Destination $package
         Write-Host "  $package"
 
-        # The installable file also sits beside the app, where "Open extension folder" leads.
-        Copy-Item $package (Join-Path $target "RouteShield-$browser.$extension") -Force
+        # Release downloads stay in artifacts; the Windows ZIP contains only an installation README.
     }
 }
 
@@ -375,6 +383,19 @@ function Compress-Package {
     Remove-Item $package -Force -ErrorAction SilentlyContinue
 
     Compress-Archive -Path (Join-Path $Dist '*') -DestinationPath $package -CompressionLevel Optimal
+
+    # Fail the build if an old/stale add-on accidentally enters the Windows distribution.
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($package)
+    try {
+        foreach ($entry in $archive.Entries) {
+            $name = $entry.FullName.Replace('\', '/')
+            if ($name.EndsWith('/')) { continue }
+            if ($name.StartsWith('extensions/', [StringComparison]::OrdinalIgnoreCase) -and $name -ne 'extensions/README.txt') {
+                throw 'Browser extensions must remain separate release assets, not part of the Windows ZIP.'
+            }
+        }
+    } finally { $archive.Dispose() }
 
     $hash = (Get-FileHash $package -Algorithm SHA256).Hash.ToLowerInvariant()
     Set-Content -Path "$package.sha256" -Value "$hash  $(Split-Path $package -Leaf)" -Encoding ascii
