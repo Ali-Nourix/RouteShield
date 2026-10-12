@@ -17,7 +17,8 @@ Variants (two APKs per variant, ARM64 and x86_64):
 - debug: `.dev` application ID; debug signed, development build.
 - diagnostic: `.diagnostic` ID; R8/resource shrinking like release, debug signed so it can
   be installed separately; redacted diagnostic export, no verbose native traffic logs.
-- release: production ID, optimized, **unsigned**. Supply your own production signing
+- release: production ID, optimized, **unsigned by default**. Complete owner-provided signing environment
+  enables release signing, with no partial-config/debug fallback. Supply your own production signing
   outside source control before distribution. A debug-key build is not a production release.
 
 Build optimized variants: `sh gradlew :app:assembleDiagnostic :app:assembleRelease`.
@@ -71,3 +72,6 @@ This app does not promise a kernel kill switch without OS lockdown. Policy chang
 explicit disconnect/reconnect. Auto-mode node metrics originate in the native engine.
 
 See ../docs/mobile-port.md for implemented features, desktop-only differences and device gates.
+
+Actions and owner-key setup: ../docs/github-actions-and-android-signing.md.
+Android UI/app-policy follow-up: ../docs/android-followup.md and ../docs/android-m3-expressive-review.md.

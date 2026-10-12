@@ -4,7 +4,7 @@ import java.util.concurrent.CopyOnWriteArraySet
 data class TunnelSnapshot(val stage:String="idle", val latencyMs:Long?=null, val up:Long?=null, val down:Long?=null,
     val totalUp:Long?=null, val totalDown:Long?=null, val exitIp:String?=null, val selected:String?=null,
     val delays:Map<String,Int> = emptyMap()) {
-    val running get()=stage in setOf("starting","ready","online","waiting")
+    val running get()=stage in setOf("starting","ready","online","waiting","stopping")
 }
 object TunnelStatus {
     @Volatile var value=TunnelSnapshot(); private set

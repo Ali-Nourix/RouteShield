@@ -3,6 +3,8 @@ package com.nourix.routeshield.designsystem
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MoreVert
@@ -23,25 +25,25 @@ import com.materialkolor.rememberDynamicColorScheme
 import java.util.Locale
 
 /** New RouteShield vocabulary; informed by Sekke's layering, not copied from its private source. */
-object ShieldSpace { val small=8.dp; val medium=16.dp; val gutter=20.dp; val section=24.dp; val reading=680.dp }
-@Composable fun ShieldTheme(mode:String="system", language:String="system", content:@Composable ()->Unit) {
+object ShieldSpace { val small=8.dp; val medium=16.dp; val gutter=16.dp; val section=24.dp; val reading=680.dp }
+@Composable fun ShieldTheme(mode:String="system", language:String="system", seedKey:String="brand", content:@Composable ()->Unit) {
     val dark=when(mode) { "dark"->true; "light"->false; else->isSystemInDarkTheme() }
     val context=LocalContext.current
     val config=android.content.res.Configuration(LocalConfiguration.current)
     if(language!="system") config.setLocale(Locale.forLanguageTag(language))
     val scoped=remember(context,language,config) { context.createConfigurationContext(config) }
     val rtl=if(config.locales[0].language in listOf("fa","ar")) LayoutDirection.Rtl else LayoutDirection.Ltr
-    val colors=rememberDynamicColorScheme(seedColor=Color(0xFFEC3013),isDark=dark,style=PaletteStyle.TonalSpot)
+    val colors=rememberDynamicColorScheme(seedColor=Color(com.nourix.routeshield.ThemePalette.color(seedKey)),isDark=dark,style=PaletteStyle.TonalSpot)
     MaterialExpressiveTheme(colorScheme=colors,motionScheme=MotionScheme.expressive(),
-        shapes=Shapes(extraSmall=RoundedCornerShape(12.dp),small=RoundedCornerShape(16.dp),medium=RoundedCornerShape(20.dp),large=RoundedCornerShape(28.dp),extraLarge=RoundedCornerShape(32.dp))) {
+        shapes=Shapes(extraSmall=RoundedCornerShape(4.dp),small=RoundedCornerShape(8.dp),medium=RoundedCornerShape(12.dp),large=RoundedCornerShape(16.dp),extraLarge=RoundedCornerShape(28.dp))) {
         CompositionLocalProvider(LocalContext provides scoped, LocalConfiguration provides config,
             LocalLayoutDirection provides rtl, LocalContentColor provides colors.onSurface, content=content)
     }
 }
-@Composable fun ShieldPanel(modifier:Modifier=Modifier, emphasized:Boolean=false, content:@Composable ColumnScope.()->Unit) {
-    Surface(modifier=modifier.fillMaxWidth(),shape=MaterialTheme.shapes.large,
-        color=if(emphasized) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer) {
-        Column(Modifier.padding(ShieldSpace.section),verticalArrangement=Arrangement.spacedBy(ShieldSpace.medium),content=content)
+@Composable fun ShieldPanel(modifier:Modifier=Modifier, emphasized:Boolean=false, compact:Boolean=false, content:@Composable ColumnScope.()->Unit) {
+    Surface(modifier=modifier.fillMaxWidth(),shape=if(emphasized) MaterialTheme.shapes.extraLarge else MaterialTheme.shapes.medium,
+        color=if(emphasized) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest) {
+        Column(Modifier.padding(if(emphasized) ShieldSpace.section else ShieldSpace.medium),verticalArrangement=Arrangement.spacedBy(if(compact) ShieldSpace.small else ShieldSpace.medium),content=content)
     }
 }
 @Composable fun ShieldButton(label:String,onClick:()->Unit,modifier:Modifier=Modifier,enabled:Boolean=true,primary:Boolean=false) {
@@ -98,4 +100,45 @@ object ShieldSpace { val small=8.dp; val medium=16.dp; val gutter=20.dp; val sec
             Column(Modifier.padding(24.dp).heightIn(max=600.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) { Text(title,style=MaterialTheme.typography.headlineSmall); content() }
         }
     }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable fun ShieldColors(selected:String,labels:List<String>,enabled:Boolean,onSelect:(String)->Unit) {
+    FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+        com.nourix.routeshield.ThemePalette.seeds.entries.forEachIndexed { index,entry ->
+            FilterChip(selected=selected==entry.key,onClick={onSelect(entry.key)},enabled=enabled,label={Text(labels[index])},leadingIcon={
+                Surface(color=Color(entry.value),shape=RoundedCornerShape(50),modifier=Modifier.size(18.dp)) {}
+            })
+        }
+    }
+}
+@Composable fun ShieldGroupTabs(names:List<String>,selected:Int,enabled:Boolean,onSelect:(Int)->Unit) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+        names.forEachIndexed { index,name -> FilterChip(selected=selected==index,onClick={onSelect(index)},enabled=enabled,
+            label={Text(name,modifier=Modifier.widthIn(max=180.dp),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)}) }
+    }
+}
+@Composable fun ShieldNodeRow(title:String,subtitle:String,trailing:String?,selected:Boolean,enabled:Boolean,onSelect:()->Unit) {
+    Surface(color=if(selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,shape=androidx.compose.ui.graphics.RectangleShape,
+        modifier=Modifier.fillMaxWidth().selectable(selected=selected,enabled=enabled,role=androidx.compose.ui.semantics.Role.RadioButton,onClick=onSelect)) {
+        Row(Modifier.padding(horizontal=8.dp,vertical=12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+            RadioButton(selected=selected,onClick=null,enabled=enabled)
+            Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                Text(title,style=if(selected) MaterialTheme.typography.titleMedium.copy(fontWeight=androidx.compose.ui.text.font.FontWeight.Bold) else MaterialTheme.typography.titleMedium,maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text(subtitle,style=MaterialTheme.typography.bodyMedium,color=if(selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,maxLines=2)
+            }
+            if(trailing!=null) CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Text(trailing,style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+@Composable fun ShieldAppSwitch(label:String,pkg:String,detail:String,on:Boolean,enabled:Boolean,onChange:(Boolean)->Unit) {
+    ListItem(colors=ListItemDefaults.colors(containerColor=Color.Transparent),headlineContent={Text(label,maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)},
+        supportingContent={Column {Text(pkg,style=MaterialTheme.typography.bodySmall);Text(detail,style=MaterialTheme.typography.labelSmall)}},
+        trailingContent={Switch(checked=on,onCheckedChange=onChange,enabled=enabled)})
+}
+
+@Composable fun ShieldTextAction(label:String,onClick:()->Unit,enabled:Boolean=true,modifier:Modifier=Modifier,destructive:Boolean=false) {
+    TextButton(onClick=onClick,enabled=enabled,modifier=modifier.heightIn(min=48.dp),colors=ButtonDefaults.textButtonColors(contentColor=if(destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)) {Text(label,style=MaterialTheme.typography.labelLarge)}
 }

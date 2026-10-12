@@ -1,11 +1,15 @@
 """Restore user-provided signing key to runner temp only; never print its contents."""
 import base64
 import os
+import re
 from pathlib import Path
 
 required = ["ANDROID_KEYSTORE_BASE64", "ANDROID_KEYSTORE_PASSWORD", "ANDROID_KEY_ALIAS", "ANDROID_KEY_PASSWORD", "ANDROID_SIGNING_CERT_SHA256"]
 if any(not os.environ.get(name, "").strip() for name in required):
     raise SystemExit("Required Android signing secrets are missing; no debug-key fallback allowed.")
+expected=os.environ["ANDROID_SIGNING_CERT_SHA256"].replace(":", "").strip().lower()
+if not re.fullmatch(r"[0-9a-f]{64}", expected):
+    raise SystemExit("Invalid certificate fingerprint; refuse signing setup.")
 encoded = os.environ["ANDROID_KEYSTORE_BASE64"]
 if len(encoded) > 48000:
     raise SystemExit("Keystore secret is too large.")

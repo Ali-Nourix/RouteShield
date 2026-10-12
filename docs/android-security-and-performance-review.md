@@ -35,3 +35,12 @@ Extends security-review-2026-10-12.md; original findings/test counts there are h
 - GitHub Advanced Security scanning is unavailable; the connection cannot modify workflow files.
   Workflow-hardening patch remains separate; no security workflow activation is claimed.
 - This review is scoped remediation, not a penetration-test certification or guarantee of no bugs.
+
+## Follow-up: Actions access and Android feedback
+
+The owner subsequently granted workflow access. The previously separate CI/release checksum and
+input-hardening patch is now applied, along with a Windows/Android artifact workflow and main-only
+manual signing. Windows artifact job has passed on a real Windows GitHub runner. Android feedback
+adds explicit stopping/TUN-before-native teardown, all-on app controls, optional local known-package
+exclusions with manual override, seed colors and compact profile rows. See android-followup.md,
+android-m3-expressive-review.md and github-actions-and-android-signing.md. Device VPN gates remain.

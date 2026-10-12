@@ -72,7 +72,12 @@ jobs:
         run: sh android/fetch-engine.sh
       - name: Test, lint and build all variants
         working-directory: android
-        run: sh gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDiagnostic :app:assembleRelease
+        run: |
+          set -o pipefail
+          sh gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDiagnostic :app:assembleRelease 2>&1 | tee "$RUNNER_TEMP/android-preview-build.log"
+      - name: Annotate preview build failures
+        if: failure()
+        run: python3 ci/scripts/android-failure-summary.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4, pinned
         with:
           name: RouteShield-Android-preview-and-unsigned-${{ github.run_number }}

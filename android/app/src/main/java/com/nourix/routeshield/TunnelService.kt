@@ -27,8 +27,8 @@ class TunnelService : VpnService(), CommandServerHandler {
     private val retestBudget = RetestBudget()
     private var automatic = false
     private var health: java.util.concurrent.ScheduledFuture<*>? = null
-    @Volatile private var closing = false
-    var tun: ParcelFileDescriptor? = null
+    @Volatile var closing = false; private set
+    @Volatile var tun: ParcelFileDescriptor? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == STOP) { stopSelf(); return START_NOT_STICKY }
         if (prepare(this) != null) { TunnelStatus.update("permission"); stopSelf(); return START_NOT_STICKY }
@@ -48,7 +48,9 @@ class TunnelService : VpnService(), CommandServerHandler {
                 debug = false; logMaxLines = 0; commandServerSecret = UUID.randomUUID().toString()
                 oomKillerDisabled = true; powerReportEnabled = false
             })
+            check(!closing)
             Libbox.checkConfig(config)
+            check(!closing)
             val adapter = NativePlatform(this).also { platform = it; it.start() }
             val command = CommandServer(this, adapter).also { server = it }
             command.start(); command.startOrReloadService(config, OverrideOptions())
@@ -71,11 +73,12 @@ class TunnelService : VpnService(), CommandServerHandler {
                     }
                 }
             },options).also { it.connect() }
+            check(!closing)
             TunnelStatus.update("ready"); showNotification("ready")
             health = healthExecutor.scheduleWithFixedDelay({ checkHealth() }, 0, 15, TimeUnit.SECONDS)
         } catch (e: Exception) {
             // Do not put native errors/configs/keys into logcat or notifications.
-            TunnelStatus.update("error"); stopSelf()
+            if(!closing) TunnelStatus.update("error"); stopSelf()
         }
     }
     private fun checkHealth() {
@@ -128,12 +131,19 @@ class TunnelService : VpnService(), CommandServerHandler {
         else startForeground(ID, notification)
     }
     override fun onDestroy() {
-        closing = true; health?.cancel(true); activeProbe?.disconnect(); healthExecutor.shutdownNow()
+        closing = true
+        if(TunnelStatus.value.stage !in setOf("error","permission")) TunnelStatus.update("stopping")
+        health?.cancel(true); activeProbe?.disconnect(); healthExecutor.shutdownNow()
+        // Unblock the native packet reader BEFORE closeService/telemetry can wait on it.
+        val descriptor=tun; tun=null; runCatching { descriptor?.close() }
         executor.execute {
-            runCatching { telemetry?.disconnect() }; telemetry=null
-            runCatching { server?.closeService() }; runCatching { server?.close() }; server = null
-            platform?.close(); platform = null; runCatching { tun?.close() }; tun = null
-            if (TunnelStatus.value.stage != "error") TunnelStatus.update("idle")
+            val okay=TunnelTeardown.close(
+                tun={ val late=tun; tun=null; late?.close() },
+                platform={ platform?.close(); platform=null },
+                coreService={ server?.closeService() },
+                coreServer={ server?.close(); server=null },
+                telemetry={ telemetry?.disconnect(); telemetry=null })
+            if (TunnelStatus.value.stage !in setOf("error","permission")) TunnelStatus.update(if(okay) "idle" else "error")
         }
         stopForeground(STOP_FOREGROUND_REMOVE); super.onDestroy()
     }
@@ -147,6 +157,6 @@ class TunnelService : VpnService(), CommandServerHandler {
     override fun writeDebugMessage(message: String?) { /* intentionally not persisted */ }
     private fun statusResource(stage: String) = when(stage) {
         "starting" -> R.string.starting; "ready" -> R.string.ready; "online" -> R.string.online
-        "waiting" -> R.string.waiting; else -> R.string.idle
+        "waiting" -> R.string.waiting; "stopping" -> R.string.stopping; else -> R.string.idle
     }
 }

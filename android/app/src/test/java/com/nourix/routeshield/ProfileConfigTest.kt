@@ -9,6 +9,7 @@ import java.nio.file.Paths
 import java.util.Base64
 
 class ProfileConfigTest {
+    @org.junit.Before fun createFixtureDirectory() { Files.createDirectories(Paths.get("build/qa-fixtures")) }
     private val uuid = "b1f0e4c2-0000-4000-8000-000000009ac4"
     private val samples = mapOf(
         "vless" to "vless://$uuid@relay.example:443?security=tls&type=ws&path=%2Fvpn&sni=relay.example#VLESS",

@@ -23,7 +23,12 @@ class MainActivity:ComponentActivity() {
         setContent { ShieldApp(model,onConnect={ toggle() },onSystemVpn={ startActivity(Intent(Settings.ACTION_VPN_SETTINGS)) },onExport={document.launch("RouteShield-diagnostics.txt")}) }
     }
     private fun toggle() {
-        if(model.tunnel.running) { startService(Intent(this,TunnelService::class.java).setAction(TunnelService.STOP)); return }
+        if(model.tunnel.running) {
+            if(model.tunnel.stage=="stopping") return
+            model.event("Requested VPN shutdown"); TunnelStatus.update("stopping")
+            if(!stopService(Intent(this,TunnelService::class.java))) TunnelStatus.update("idle")
+            return
+        }
         if(model.saved.optString("mode")=="include" && (model.saved.optJSONArray("apps")?.length() ?: 0)==0) { model.message=getString(R.string.select_apps); return }
         val intent=VpnService.prepare(this); if(intent==null) startVpn() else consent.launch(intent)
     }

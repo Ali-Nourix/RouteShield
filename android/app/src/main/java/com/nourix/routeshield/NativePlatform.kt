@@ -58,6 +58,7 @@ class NativePlatform(private val vpn: TunnelService) : PlatformInterface {
         return ConnectionOwner().apply { userId = uid; userName = packages.firstOrNull().orEmpty(); setAndroidPackageNames(Strings(packages)) }
     }
     override fun openTun(options: TunOptions): Int {
+        check(!vpn.closing) { "VPN startup was cancelled" }
         check(VpnService.prepare(vpn) == null) { "VPN permission required" }
         val builder = vpn.Builder().setSession("RouteShield").setMtu(options.getMTU())
         if (Build.VERSION.SDK_INT >= 29) builder.setMetered(false)
@@ -67,18 +68,20 @@ class NativePlatform(private val vpn: TunnelService) : PlatformInterface {
         builder.addRoute("0.0.0.0", 0).addRoute("::", 0).addDnsServer("172.19.0.2")
         val saved = ProfileStore(vpn).load()
         val apps = saved.optJSONArray("apps") ?: org.json.JSONArray()
-        when (saved.optString("mode", "all")) {
-            "include" -> {
-                require(apps.length() > 0) { "Select at least one application" }
-                for (i in 0 until apps.length()) builder.addAllowedApplication(apps.getString(i))
-                builder.addAllowedApplication(vpn.packageName) // health probes take the VPN, not the physical network
-            }
-            "exclude" -> for (i in 0 until apps.length()) if (apps.getString(i) != vpn.packageName) builder.addDisallowedApplication(apps.getString(i))
-            "all" -> Unit
-            else -> error("Unknown application policy")
+        require(saved.optString("mode","all") in setOf("all","include","exclude")) { "Unknown app routing policy" }
+        if(saved.optString("mode","all")=="include") {
+            require(apps.length()>0) { "Select at least one application" }
+            for(i in 0 until apps.length()) builder.addAllowedApplication(apps.getString(i))
+            builder.addAllowedApplication(vpn.packageName)
+        } else {
+            @Suppress("DEPRECATION") val installed= vpn.packageManager.queryIntentActivities(
+                android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER),0)
+                .map {it.activityInfo.packageName}.toSet()
+            for(pkg in AppRoutingPolicy.excluded(saved,installed,vpn.packageName)) builder.addDisallowedApplication(pkg)
         }
         underlying?.let { builder.setUnderlyingNetworks(arrayOf(it)) }
         val descriptor = builder.establish() ?: error("TUN establishment failed")
+        if(vpn.closing) { descriptor.close(); error("VPN startup was cancelled") }
         vpn.tun?.close(); vpn.tun = descriptor
         return descriptor.fd // Keep ownership until shutdown; never detach and leak the FD.
     }
