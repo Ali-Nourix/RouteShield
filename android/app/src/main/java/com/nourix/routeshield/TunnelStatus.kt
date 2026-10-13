@@ -3,15 +3,22 @@ import java.util.concurrent.CopyOnWriteArraySet
 
 data class TunnelSnapshot(val stage:String="idle", val latencyMs:Long?=null, val up:Long?=null, val down:Long?=null,
     val totalUp:Long?=null, val totalDown:Long?=null, val exitIp:String?=null, val selected:String?=null,
-    val delays:Map<String,Int> = emptyMap(), val alwaysOn:Boolean?=null, val lockdown:Boolean?=null) {
+    val delays:Map<String,Int> = emptyMap(), val alwaysOn:Boolean?=null, val lockdown:Boolean?=null, val latencyHistory:List<Long?> = emptyList()) {
     val running get()=stage in setOf("starting","ready","online","waiting","degraded","stopping")
 }
 object TunnelStatus {
     @Volatile var value=TunnelSnapshot(); private set
     val listeners=CopyOnWriteArraySet<(TunnelSnapshot)->Unit>()
     @Synchronized fun update(stage:String, latency:Long?=null) {
+        require(latency==null || latency>=0)
         if(value.stage=="stopping" && stage in setOf("starting","ready","online","waiting","degraded")) return
-        value=if(stage=="idle") TunnelSnapshot() else value.copy(stage=stage,latencyMs=latency)
+        val history=when {
+            stage=="starting"->emptyList()
+            stage=="online" && latency!=null->(value.latencyHistory+latency).takeLast(12)
+            stage in setOf("waiting","degraded")->(value.latencyHistory+listOf<Long?>(null)).takeLast(12)
+            else->value.latencyHistory
+        }
+        value=if(stage=="idle") TunnelSnapshot() else value.copy(stage=stage,latencyMs=latency,latencyHistory=history)
         listeners.forEach { it(value) }
     }
     @Synchronized fun protection(alwaysOn:Boolean,lockdown:Boolean) {

@@ -26,4 +26,12 @@ class BoundVpnShutdownTest {
         try {service.attachTun(pipe[0]);fail()} catch(_:IllegalStateException) {}
         assertFalse(pipe[0].fileDescriptor.valid());pipe[1].close();controller.destroy()
     }
+    @Test fun a_previous_connection_health_round_cannot_overwrite_new_status() {
+        val controller=Robolectric.buildService(TunnelService::class.java).create();val service=controller.get()
+        val epoch=TunnelService::class.java.getDeclaredField("connectionEpoch").apply {isAccessible=true}
+        epoch.setLong(service,2L);TunnelStatus.update("ready")
+        TunnelService::class.java.getDeclaredMethod("checkHealth",Long::class.javaPrimitiveType).apply {isAccessible=true}.invoke(service,1L)
+        assertEquals("ready",TunnelStatus.value.stage)
+        controller.destroy()
+    }
 }

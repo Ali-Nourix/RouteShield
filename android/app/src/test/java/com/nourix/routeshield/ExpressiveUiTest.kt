@@ -2,6 +2,9 @@ package com.nourix.routeshield
 
 import androidx.activity.compose.setContent
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -83,5 +86,55 @@ class ExpressiveUiTest {
     @Test fun theme_color_choices_are_visible() {
         compose.waitForIdle();compose.onNodeWithText("Settings").performClick();compose.waitForIdle()
         compose.onNodeWithText("Theme color").assertExists();compose.onNodeWithText("Blue").assertExists()
+    }
+    @Test fun route_picker_exposes_manual_and_automatic_choices() {
+        val model=androidx.lifecycle.ViewModelProvider(compose.activity)[ShieldModel::class.java]
+        compose.waitForIdle();compose.runOnUiThread {
+            val nodes=ProfileConfig.import("trojan://test-only@relay.example:443#Frankfurt\nanytls://test-only@relay.example:443#Amsterdam")
+            model.saved.put("language","en").put("library",org.json.JSONArray().put(org.json.JSONObject().put("name","Everyday routes").put("nodes",nodes)))
+            compose.activity.setContent {ShieldApp(model,{}, {}, {})}
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("Current server").performScrollTo()
+        compose.onNodeWithContentDescription("Change server").performClick();compose.waitForIdle()
+        compose.onNodeWithText("Amsterdam").assertIsEnabled()
+        compose.onAllNodesWithText("Automatic")[1].assertIsEnabled()
+        // AndroidKeyStore + JNI selection persistence require a phone, not this host screenshot test.
+        File("build/ui-qa").mkdirs()
+        compose.onNodeWithTag("route-sheet").captureRoboImage("build/ui-qa/connection-server-picker.png")
+    }
+    @Test fun persian_dark_large_text_screens_render() {
+        val model=androidx.lifecycle.ViewModelProvider(compose.activity)[ShieldModel::class.java]
+        compose.waitForIdle();compose.runOnUiThread {
+            model.saved.put("theme","dark").put("language","fa").put("library",org.json.JSONArray().put(org.json.JSONObject()
+                .put("name","مسیرهای روزانه").put("nodes",ProfileConfig.import("trojan://test-only@relay.example:443#Test"))))
+            compose.activity.setContent {
+                val density=androidx.compose.ui.platform.LocalDensity.current
+                val config=android.content.res.Configuration(androidx.compose.ui.platform.LocalConfiguration.current).apply {fontScale=2f}
+                androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density,2f),
+                    androidx.compose.ui.platform.LocalConfiguration provides config) {ShieldApp(model,{}, {}, {})}
+            }
+        }
+        compose.waitForIdle();File("build/ui-qa").mkdirs()
+        compose.activity.window.decorView.captureRoboImage("build/ui-qa/connection-dark-fa-font200.png")
+        for(label in listOf("پروفایل‌ها","برنامه‌ها","تنظیمات")) {
+            compose.onNodeWithText(label).performClick();compose.waitForIdle()
+            compose.activity.window.decorView.captureRoboImage("build/ui-qa/font200-fa-${label.hashCode()}.png")
+        }
+    }
+    @Test fun connected_expressive_layout_with_fixture_measurements() {
+        val model=androidx.lifecycle.ViewModelProvider(compose.activity)[ShieldModel::class.java]
+        compose.waitForIdle();compose.runOnUiThread {
+            model.saved.put("themeSeed","teal").put("language","en").put("library",org.json.JSONArray().put(org.json.JSONObject()
+                .put("name","Everyday routes").put("nodes",ProfileConfig.import("trojan://test-only@relay.example:443#Amsterdam"))))
+            // UI fixture values, not a real VPN benchmark or traffic observation.
+            listOf(90L,70L,110L,80L,65L,85L).forEach {TunnelStatus.update("online",it)}
+            TunnelStatus.metrics(10240,540672,50000,2300000)
+            compose.activity.setContent {ShieldApp(model,{}, {}, {})}
+        }
+        compose.waitForIdle();File("build/ui-qa").mkdirs()
+        compose.activity.window.decorView.captureRoboImage("build/ui-qa/expressive-online-fixture-teal.png")
+        compose.onNodeWithText("Disconnect").assertIsEnabled()
     }
 }

@@ -37,7 +37,7 @@ class ProfileConfigTest {
     @Test fun automatic_group_preserves_sessions_and_tolerance() {
         val nodes = ProfileConfig.import(samples.getValue("trojan") + "\n" + samples.getValue("anytls"))
         val root = JSONObject(ProfileConfig.runtime(nodes, 0)); val group = root.getJSONArray("outbounds").getJSONObject(2)
-        assertEquals("urltest", group.getString("type")); assertFalse(group.getBoolean("interrupt_exist_connections")); assertEquals(150, group.getInt("tolerance"))
+        assertEquals("45s", group.getString("interval")); assertEquals("urltest", group.getString("type")); assertFalse(group.getBoolean("interrupt_exist_connections")); assertEquals(150, group.getInt("tolerance"))
         Files.createDirectories(Paths.get("build/qa-fixtures")); Files.write(Paths.get("build/qa-fixtures/automatic.json"), root.toString().toByteArray())
         val manual=JSONObject(ProfileConfig.runtime(nodes, 2)).getJSONArray("outbounds")
         assertEquals(5,manual.length()); val selector=manual.getJSONObject(3)
