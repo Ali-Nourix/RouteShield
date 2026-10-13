@@ -3,6 +3,7 @@ package com.nourix.routeshield
 class HealthGate(private val preferStability:Boolean=true) {
     private var hadSuccess=false
     private var failures=0
+    fun networkChanged() {hadSuccess=false;failures=0}
     fun success() {hadSuccess=true;failures=0}
     fun failureNeedsRecovery():Boolean {
         failures=(failures+1).coerceAtMost(3)

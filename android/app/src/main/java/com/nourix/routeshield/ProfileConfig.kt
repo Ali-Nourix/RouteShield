@@ -185,7 +185,7 @@ object ProfileConfig {
         val choices=JSONArray()
         if(nodes.length()>1) {
             out.put(JSONObject().put("type", "urltest").put("tag", "auto").put("outbounds", tags)
-                .put("url", "https://www.gstatic.com/generate_204").put("interval", "1m")
+                .put("url", "https://www.gstatic.com/generate_204").put("interval", if(settings.optBoolean("preferStability",true)) "45s" else "30s")
                 .put("tolerance", if(settings.optBoolean("preferStability",true)) 150 else 0).put("interrupt_exist_connections", false))
             choices.put("auto")
         }

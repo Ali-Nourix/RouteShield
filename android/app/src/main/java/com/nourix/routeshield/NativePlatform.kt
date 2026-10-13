@@ -39,11 +39,13 @@ class NativePlatform(private val vpn: TunnelService) : PlatformInterface {
             it.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) && it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
         } == true }
         val active = connectivity.activeNetwork.takeIf { it in networks }
+        val previous = underlying
         underlying = active ?: networks.sortedByDescending { connectivity.getNetworkCapabilities(it)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true }.firstOrNull()
         vpn.setUnderlyingNetworks(underlying?.let { arrayOf(it) })
         val name = underlying?.let { connectivity.getLinkProperties(it)?.interfaceName }
         val iface = name?.let { runCatching { JavaInterface.getByName(it) }.getOrNull() }
         listener?.updateDefaultInterface(name ?: "", iface?.index ?: -1, false, false)
+        if(previous != underlying) vpn.underlyingNetworkChanged()
     }
     override fun startDefaultInterfaceMonitor(value: InterfaceUpdateListener) { listener = value; updateNetwork() }
     override fun closeDefaultInterfaceMonitor(value: InterfaceUpdateListener) { listener = null }
