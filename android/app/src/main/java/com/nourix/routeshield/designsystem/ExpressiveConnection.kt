@@ -2,11 +2,9 @@
 package com.nourix.routeshield.designsystem
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,14 +30,18 @@ import androidx.compose.ui.unit.dp
 import androidx.graphics.shapes.Morph
 import com.nourix.routeshield.R
 
-/** Official Material polygon morph, scaled from its real bounds; spring overshoot is clamped. */
-private class ConnectionMorph(private val morph: Morph, private val progress: Float): Shape {
+/** Fixed disconnected flower, including its original framing; only the colors change. */
+private class ConnectionFlower: Shape {
+    // Preserve the old progress=0 outline exactly, including the shared morph bounds.
+    // Neither tunnel state nor pointer presses may drive this geometry.
+    private val baseline=Morph(MaterialShapes.Cookie9Sided,MaterialShapes.Puffy)
+    private val bounds=baseline.calculateMaxBounds()
+    private val cubics=baseline.asCubics(0f).toList()
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
-        val bounds=morph.calculateMaxBounds()
         fun x(value:Float)=(value-bounds[0])/(bounds[2]-bounds[0])*size.width
         fun y(value:Float)=(value-bounds[1])/(bounds[3]-bounds[1])*size.height
         val path=Path()
-        morph.asCubics(progress.coerceIn(0f,1f)).forEachIndexed { i,cubic ->
+        cubics.forEachIndexed { i,cubic ->
             if(i==0) path.moveTo(x(cubic.anchor0X),y(cubic.anchor0Y))
             path.cubicTo(x(cubic.control0X),y(cubic.control0Y),x(cubic.control1X),y(cubic.control1Y),x(cubic.anchor1X),y(cubic.anchor1Y))
         }
@@ -49,15 +51,13 @@ private class ConnectionMorph(private val morph: Morph, private val progress: Fl
 
 @Composable fun ExpressiveConnectControl(label:String,state:String,running:Boolean,working:Boolean,enabled:Boolean,onClick:()->Unit) {
     val interaction=remember {MutableInteractionSource()}
-    val pressed by interaction.collectIsPressedAsState()
-    val morph=remember {Morph(MaterialShapes.Cookie9Sided,MaterialShapes.Puffy)}
-    val progress by animateFloatAsState(if(pressed) 0.45f else if(running) 1f else 0f,MaterialTheme.motionScheme.fastSpatialSpec(),label="connection-morph")
+    val flower=remember {ConnectionFlower()}
     val color by animateColorAsState(if(running) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primary,MaterialTheme.motionScheme.fastEffectsSpec(),label="connection-color")
     val foreground=if(running) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimary
     Column(Modifier.widthIn(min=144.dp,max=224.dp).clickable(interactionSource=interaction,indication=LocalIndication.current,enabled=enabled,role=Role.Button,onClick=onClick)
         .semantics {stateDescription=state}.padding(8.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(12.dp)) {
         Surface(color=if(enabled) color else MaterialTheme.colorScheme.surfaceContainerHighest,contentColor=if(enabled) foreground else MaterialTheme.colorScheme.onSurfaceVariant,
-            shape=ConnectionMorph(morph,progress),modifier=Modifier.size(if(LocalConfiguration.current.fontScale>=1.5f) 144.dp else 160.dp)) {
+            shape=flower,modifier=Modifier.size(if(LocalConfiguration.current.fontScale>=1.5f) 144.dp else 160.dp)) {
             Box(contentAlignment=Alignment.Center) {
                 if(working) LoadingIndicator(modifier=Modifier.size(64.dp),color=foreground)
                 else Icon(Icons.Rounded.PowerSettingsNew,null,Modifier.size(60.dp))
