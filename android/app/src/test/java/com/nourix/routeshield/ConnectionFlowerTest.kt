@@ -8,10 +8,9 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.toPixelMap
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -47,37 +46,41 @@ class ConnectionFlowerTest {
         }
         val control=compose.onNodeWithTag("control")
         compose.waitForIdle()
-        val disconnected=control.captureToImage()
         File("build/ui-qa").mkdirs()
-        control.captureRoboImage("build/ui-qa/connection-flower-disconnected.png")
+        // Roborazzi performs host-native draws; captureToImage/PixelCopy requires a device window.
+        fun capture(name:String):Bitmap {
+            val path="build/ui-qa/connection-flower-$name.png"
+            control.captureRoboImage(path)
+            return requireNotNull(BitmapFactory.decodeFile(path))
+        }
+        val disconnected=capture("disconnected")
         compose.runOnIdle {running.value=true}
         compose.waitForIdle()
-        val connected=control.captureToImage()
-        control.captureRoboImage("build/ui-qa/connection-flower-connected.png")
+        val connected=capture("connected")
         assertSameSilhouette(disconnected,connected)
         assertTrue("Disconnected fill must be primary",coloredPixels(disconnected,true)>100)
         assertTrue("Connected fill must be tertiary",coloredPixels(connected,false)>100)
         compose.runOnIdle {running.value=false}
         compose.waitForIdle()
-        assertSameSilhouette(disconnected,control.captureToImage())
+        assertSameSilhouette(disconnected,capture("disconnected-again"))
     }
 
-    private fun assertSameSilhouette(expected:ImageBitmap,actual:ImageBitmap) {
+    private fun assertSameSilhouette(expected:Bitmap,actual:Bitmap) {
         assertEquals(expected.width,actual.width)
         assertEquals(expected.height,actual.height)
-        val before=expected.toPixelMap();val after=actual.toPixelMap()
         for(y in 0 until expected.height) for(x in 0 until expected.width) {
             // Red and blue use identical coverage thresholds; white icon/text is unchanged.
-            fun visible(color:Color)=maxOf(color.red,color.green,color.blue)>0.05f
-            assertEquals("Flower coverage changed at ($x,$y)",visible(before[x,y]),visible(after[x,y]))
+            fun visible(color:Int)=maxOf(android.graphics.Color.red(color),android.graphics.Color.green(color),android.graphics.Color.blue(color))>13
+            assertEquals("Flower coverage changed at ($x,$y)",visible(expected.getPixel(x,y)),visible(actual.getPixel(x,y)))
         }
     }
 
-    private fun coloredPixels(image:ImageBitmap,red:Boolean):Int {
-        val pixels=image.toPixelMap();var count=0
+    private fun coloredPixels(image:Bitmap,red:Boolean):Int {
+        var count=0
         for(y in 0 until image.height) for(x in 0 until image.width) {
-            val color=pixels[x,y]
-            if(if(red) color.red>0.8f && color.blue<0.1f else color.blue>0.8f && color.red<0.1f) count++
+            val color=image.getPixel(x,y)
+            val r=android.graphics.Color.red(color);val b=android.graphics.Color.blue(color)
+            if(if(red) r>204 && b<26 else b>204 && r<26) count++
         }
         return count
     }
