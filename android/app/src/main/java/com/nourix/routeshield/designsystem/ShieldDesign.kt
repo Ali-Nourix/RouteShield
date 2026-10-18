@@ -45,7 +45,10 @@ object ShieldSpace { val small=8.dp; val medium=16.dp; val gutter=16.dp; val sec
     val context=LocalContext.current
     val config=android.content.res.Configuration(LocalConfiguration.current)
     if(language!="system") config.setLocale(Locale.forLanguageTag(language))
-    val scoped=remember(context,language,config) { context.createConfigurationContext(config) }
+    // Keep the Activity in the wrapper chain for platform windows and lifecycle owners.
+    val scoped=remember(context,language,config) {
+        android.view.ContextThemeWrapper(context,context.theme).apply {applyOverrideConfiguration(config)}
+    }
     val rtl=if(config.locales[0].language in listOf("fa","ar")) LayoutDirection.Rtl else LayoutDirection.Ltr
     val colors=rememberDynamicColorScheme(seedColor=Color(com.nourix.routeshield.ThemePalette.color(seedKey)),isDark=dark,style=PaletteStyle.Vibrant)
     val base=Typography()
@@ -133,7 +136,7 @@ object ShieldSpace { val small=8.dp; val medium=16.dp; val gutter=16.dp; val sec
 @Composable fun ShieldRule() { HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant) }
 @Composable fun ShieldDialog(title:String,onDismiss:()->Unit,secure:Boolean=false,content:@Composable ColumnScope.()->Unit) {
     androidx.compose.ui.window.Dialog(onDismissRequest=onDismiss,properties=androidx.compose.ui.window.DialogProperties(securePolicy=if(secure) androidx.compose.ui.window.SecureFlagPolicy.SecureOn else androidx.compose.ui.window.SecureFlagPolicy.Inherit)) {
-        Surface(shape=MaterialTheme.shapes.extraLarge,color=MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Surface(modifier=Modifier.fillMaxWidth(),shape=MaterialTheme.shapes.extraLarge,color=MaterialTheme.colorScheme.surfaceContainerHigh) {
             Column(Modifier.padding(24.dp).heightIn(max=600.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) { Text(title,style=MaterialTheme.typography.headlineSmall); content() }
         }
     }

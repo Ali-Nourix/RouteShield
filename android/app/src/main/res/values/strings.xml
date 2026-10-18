@@ -15,7 +15,7 @@
 <string name="subtitle">Your profiles and preferences stay on your device.</string>
 <string name="auto">Automatic · fastest available</string>
 <string name="empty">Add a link or import a WireGuard .conf file.</string>
-<string name="import_hint">Link, WireGuard config, or node JSON</string>
+<string name="import_hint">Link or config</string>
 <string name="save">Import</string>
 <string name="cancel">Cancel</string>
 <string name="import_error">Could not import. Check the config, keys, or HTTPS subscription.</string>
@@ -56,7 +56,7 @@
 <string name="test_nodes">Measure active group</string>
 <string name="unmeasured">No native measurement yet</string>
 <string name="delete_profile_prompt">Remove this local profile group?</string>
-<string name="profile_name">Profile name</string>
+<string name="profile_name">Name (optional)</string>
 <string name="subscription_hint">Paste a config or HTTPS subscription. Stored encrypted on this device.</string>
 <string name="search_apps">Search applications</string>
 <string name="appearance">Appearance</string>

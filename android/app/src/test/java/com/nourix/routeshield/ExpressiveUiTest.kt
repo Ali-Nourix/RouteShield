@@ -2,6 +2,8 @@ package com.nourix.routeshield
 
 import androidx.activity.compose.setContent
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNode
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -138,6 +140,13 @@ class ExpressiveUiTest {
         compose.waitForIdle();File("build/ui-qa").mkdirs()
         compose.activity.window.decorView.captureRoboImage("build/ui-qa/expressive-online-fixture-teal.png")
         compose.onNodeWithText("Disconnect").assertIsEnabled()
+        compose.runOnUiThread {
+            model.saved.put("theme","dark").put("language","fa")
+            compose.activity.setContent {ShieldApp(model,{}, {}, {})}
+        }
+        compose.waitForIdle()
+        compose.activity.window.decorView.captureRoboImage("build/ui-qa/expressive-online-dark-fa.png")
+        compose.onNodeWithText("قطع اتصال").assertIsEnabled()
     }
     @Test fun file_import_uses_system_picker_without_storage_permission() {
         compose.waitForIdle();compose.onNodeWithText("Profiles").performClick();compose.waitForIdle()
@@ -150,7 +159,7 @@ class ExpressiveUiTest {
     @Test fun invalid_paste_keeps_input_and_explains_error_in_dialog() {
         compose.waitForIdle();compose.onNodeWithText("Profiles").performClick();compose.waitForIdle()
         compose.onNodeWithText("Import profiles").performClick();compose.waitForIdle()
-        val field=compose.onNodeWithText("Link, WireGuard config, or node JSON")
+        val field=compose.onNodeWithText("Link or config")
         field.performTextInput("not-a-config")
         compose.onNodeWithText("Import",useUnmergedTree=true).performClick()
         val model=androidx.lifecycle.ViewModelProvider(compose.activity)[ShieldModel::class.java]
@@ -158,6 +167,6 @@ class ExpressiveUiTest {
         compose.onNodeWithText("Could not import. Check the config, keys, or HTTPS subscription.").assertExists()
         field.assertTextContains("not-a-config")
         File("build/ui-qa").mkdirs()
-        compose.activity.window.decorView.captureRoboImage("build/ui-qa/import-error-retains-input.png")
+        compose.onNode(isDialog()).captureRoboImage("build/ui-qa/import-error-retains-input.png")
     }
 }

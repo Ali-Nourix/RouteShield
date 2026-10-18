@@ -42,14 +42,18 @@ class ShieldModel(application: Application) : AndroidViewModel(application) {
         return app.createConfigurationContext(config).getString(resource)
     }
     fun import(name:String, input:String, onFailed:((String)->Unit)?=null, onImported:()->Unit={}) = io(R.string.import_error,onImported,onFailed) { addProfile(name,input) }
-    fun importDocument(uri:android.net.Uri) = io(R.string.import_file_error,{message=text(R.string.imported_file)}) {
-        check(!tunnel.running) { "Disconnect before importing" }
-        val resolver=getApplication<Application>().contentResolver
-        val input=resolver.openInputStream(uri)?.use(ProfileDocument::read) ?: error("Cannot open profile")
-        val name=runCatching {resolver.query(uri,arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),null,null,null)?.use {
-            if(it.moveToFirst()) it.getString(0)?.substringBeforeLast('.')?.take(80) else null
-        }}.getOrNull().orEmpty()
-        addProfile(name,input)
+    fun importDocument(uri:android.net.Uri) = viewModelScope.launch {
+        // Activity results may arrive while restored encrypted preferences are still loading.
+        while(busy) kotlinx.coroutines.delay(50)
+        io(R.string.import_file_error,{message=text(R.string.imported_file)}) {
+            check(!tunnel.running) { "Disconnect before importing" }
+            val resolver=getApplication<Application>().contentResolver
+            val input=resolver.openInputStream(uri)?.use(ProfileDocument::read) ?: error("Cannot open profile")
+            val name=runCatching {resolver.query(uri,arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),null,null,null)?.use {
+                if(it.moveToFirst()) it.getString(0)?.substringBeforeLast('.')?.take(80) else null
+            }}.getOrNull().orEmpty()
+            addProfile(name,input)
+        }
     }
     private fun addProfile(name:String,input:String):JSONObject {
         check(!tunnel.running) { "Disconnect before importing" }
