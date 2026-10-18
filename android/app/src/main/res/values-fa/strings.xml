@@ -13,7 +13,7 @@
 <string name="permission">مجوز VPN داده نشد.</string>
 <string name="subtitle">پروفایل‌ها و تنظیمات، خصوصی و روی دستگاه.</string>
 <string name="auto">خودکار · سریع‌ترین نود در دسترس</string>
-<string name="empty">لینک اضافه کن یا فایل WireGuard با پسوند .conf وارد کن.</string>
+<string name="empty">لینک اضافه کن یا فایل WireGuard با پسوند ⁦.conf⁩ وارد کن.</string>
 <string name="import_hint">لینک یا کانفیگ</string>
 <string name="save">وارد کردن</string>
 <string name="cancel">انصراف</string>
@@ -139,9 +139,9 @@
 <string name="quality_history_accessibility">تأخیرهای اخیر HTTPS بر حسب میلی‌ثانیه: %1$s</string>
 <string name="probe_failed">ناموفق</string>
 <string name="operation_error">ذخیره نشد. شبکه یا حافظهٔ محلی را بررسی کن.</string>
-<string name="import_file_error">فایل خوانده نشد. فایل متنی UTF-8 با فرمت .conf یا JSON و حجم کمتر از ۵ مگابایت انتخاب کن.</string>
-<string name="import_file">ورود فایل .conf یا پروفایل</string>
+<string name="import_file_error">فایل خوانده نشد. فایل متنی UTF-8 با فرمت ⁦.conf⁩ یا JSON و حجم کمتر از ۵ مگابایت انتخاب کن.</string>
+<string name="import_file">ورود فایل ⁦.conf⁩ یا پروفایل</string>
 <string name="imported_file">پروفایل اضافه شد. DNS و مسیریابی طبق تنظیمات روت‌شیلد است.</string>
 <string name="wireguard_info">جزئیات ورود WireGuard</string>
-<string name="wireguard_policy">فایل استاندارد .conf و متن کانفیگ WireGuard پشتیبانی می‌شود. DNS و مسیریابی برنامه‌ها از تنظیمات روت‌شیلد پیروی می‌کنند، نه فایل. AllowedIPs و keepalive حفظ می‌شوند. اسکریپت‌ها و تنظیمات AmneziaWG پشتیبانی نمی‌شوند.</string>
+<string name="wireguard_policy">فایل استاندارد ⁦.conf⁩ و متن کانفیگ WireGuard پشتیبانی می‌شود. DNS و مسیریابی برنامه‌ها از تنظیمات روت‌شیلد پیروی می‌کنند، نه فایل. AllowedIPs و keepalive حفظ می‌شوند. اسکریپت‌ها و تنظیمات AmneziaWG پشتیبانی نمی‌شوند.</string>
 </resources>
