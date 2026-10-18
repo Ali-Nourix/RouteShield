@@ -20,6 +20,9 @@ import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.*
@@ -220,14 +223,16 @@ private fun bytes(value:Long):String = if(value>=1024*1024) String.format(Locale
 }
 @Composable private fun ImportDialog(model:ShieldModel,onDismiss:()->Unit) {
     var name by remember {mutableStateOf("")}; var input by remember {mutableStateOf("")}
+    var error by remember {mutableStateOf<String?>(null)}
     ShieldDialog(stringResource(R.string.import_profiles),onDismiss,secure=true) {
         Column(Modifier.weight(1f,false).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             ShieldField(name,{name=it},stringResource(R.string.profile_name))
-            ShieldField(input,{input=it},stringResource(R.string.import_hint),singleLine=false)
+            ShieldField(input,{input=it;error=null},stringResource(R.string.import_hint),singleLine=false)
+            error?.let {Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodyMedium,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})}
             Text(stringResource(R.string.subscription_hint),style=MaterialTheme.typography.bodySmall)
             ExpandableDetail(stringResource(R.string.wireguard_info),stringResource(R.string.wireguard_policy))
         }
-        ShieldButton(stringResource(R.string.save),{model.import(name,input) {input="";onDismiss()}},enabled=input.isNotBlank() && !model.busy,primary=true)
+        ShieldButton(stringResource(R.string.save),{error=null;model.import(name,input,onFailed={error=it}) {input="";onDismiss()}},enabled=input.isNotBlank() && !model.busy,primary=true)
         ShieldButton(stringResource(R.string.cancel),onDismiss)
     }
 }

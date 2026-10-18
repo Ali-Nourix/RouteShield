@@ -27,16 +27,22 @@ class ShieldModel(application: Application) : AndroidViewModel(application) {
     init { TunnelStatus.listeners.add(observer); io { val data=store.load(); if(!data.has("library")) {
         val old=data.optJSONArray("nodes"); val list=JSONArray(); if(old!=null && old.length()>0) list.put(JSONObject().put("id",UUID.randomUUID().toString()).put("name","Imported").put("nodes",old))
         data.put("library",list).remove("nodes") }; data } }
-    private fun io(errorResource:Int=R.string.operation_error, onSuccess:()->Unit={}, action: suspend ()->JSONObject) {
+    private fun io(errorResource:Int=R.string.operation_error, onSuccess:()->Unit={}, onFailure:((String)->Unit)?=null, action: suspend ()->JSONObject) {
         if (busy) return
         busy=true
         viewModelScope.launch { try { saved=withContext(Dispatchers.IO) { action() }; revision++; onSuccess() }
             catch(e:kotlinx.coroutines.CancellationException) {throw e}
-            catch(e:Exception) { message=getApplication<Application>().getString(errorResource) }
+            catch(e:Exception) { val error=text(errorResource); if(onFailure!=null) onFailure(error) else message=error }
             finally { busy=false } }
     }
-    fun import(name:String, input:String, onImported:()->Unit={}) = io(R.string.import_error,onImported) { addProfile(name,input) }
-    fun importDocument(uri:android.net.Uri) = io(R.string.import_file_error,{message=getApplication<Application>().getString(R.string.imported_file)}) {
+    private fun text(resource:Int):String {
+        val app=getApplication<Application>();val language=saved.optString("language","system")
+        if(language=="system") return app.getString(resource)
+        val config=android.content.res.Configuration(app.resources.configuration).apply {setLocale(java.util.Locale.forLanguageTag(language))}
+        return app.createConfigurationContext(config).getString(resource)
+    }
+    fun import(name:String, input:String, onFailed:((String)->Unit)?=null, onImported:()->Unit={}) = io(R.string.import_error,onImported,onFailed) { addProfile(name,input) }
+    fun importDocument(uri:android.net.Uri) = io(R.string.import_file_error,{message=text(R.string.imported_file)}) {
         check(!tunnel.running) { "Disconnect before importing" }
         val resolver=getApplication<Application>().contentResolver
         val input=resolver.openInputStream(uri)?.use(ProfileDocument::read) ?: error("Cannot open profile")
