@@ -2,6 +2,10 @@
 package com.nourix.routeshield
 
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
@@ -49,7 +53,7 @@ import java.util.Locale
                     2->ApplicationsScreen(model)
                     else->SettingsScreen(model,onSystemVpn,onExport)
                 }
-                Text(stringResource(R.string.notice),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                if(page==3) Text(stringResource(R.string.notice),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -72,12 +76,12 @@ import java.util.Locale
         val working=value.stage in setOf("starting","ready","stopping","waiting")
         if(LocalConfiguration.current.fontScale>=1.5f) {
             Text(headline,style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold)
-            ExpressiveConnectControl(label,stringResource(resource),value.running,working,enabled,action)
+            ExpressiveConnectControl(label,stringResource(resource),value.running,working,enabled,action,online=value.stage=="online")
         } else Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             Text(headline,Modifier.weight(1f),style=MaterialTheme.typography.displayMedium,fontWeight=FontWeight.Bold)
-            ExpressiveConnectControl(label,stringResource(resource),value.running,working,enabled,action)
+            ExpressiveConnectControl(label,stringResource(resource),value.running,working,enabled,action,online=value.stage=="online")
         }
-        Text(stringResource(if(nodes.length()==0) R.string.connect_empty_hint else R.string.private_local),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        if(nodes.length()==0) Text(stringResource(R.string.connect_empty_hint),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
     if(nodes.length()>0) {
         Surface(onClick={routes=true},enabled=!model.busy && value.stage !in setOf("starting","stopping"),shape=RoundedCornerShape(24.dp),color=MaterialTheme.colorScheme.surfaceContainer) {
@@ -140,8 +144,10 @@ import java.util.Locale
 }
 @Composable private fun ExpandableDetail(title:String,detail:String) {
     var expanded by remember {mutableStateOf(false)}
-    ShieldTextAction(title,{expanded=!expanded})
-    if(expanded) Text(detail,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(Modifier.animateContentSize(animationSpec=MaterialTheme.motionScheme.fastSpatialSpec())) {
+        ShieldTextAction(title,{expanded=!expanded})
+        AnimatedVisibility(expanded) {Text(detail,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+    }
 }
 @Composable private fun Metric(label:String,value:String) {
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
@@ -155,9 +161,14 @@ private fun bytes(value:Long):String = if(value>=1024*1024) String.format(Locale
     var visible by remember {mutableIntStateOf(20)}
     var profileMenu by remember {mutableStateOf(false)}
     val library=model.saved.optJSONArray("library") ?: JSONArray()
+    val filePicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri-> if(uri!=null) model.importDocument(uri)}
     val edit=!model.tunnel.running && !model.busy
     val switchable=!model.busy && model.tunnel.stage !in setOf("starting","stopping")
-    ShieldButton(stringResource(R.string.import_profiles),{importing=true},enabled=edit,primary=true,modifier=Modifier.fillMaxWidth())
+    Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        ShieldButton(stringResource(R.string.import_profiles),{importing=true},enabled=edit,primary=true,modifier=Modifier.fillMaxWidth())
+        ShieldButton(stringResource(R.string.import_file),{filePicker.launch(arrayOf("*/*"))},enabled=edit,modifier=Modifier.fillMaxWidth())
+        ExpandableDetail(stringResource(R.string.wireguard_info),stringResource(R.string.wireguard_policy))
+    }
     if(library.length()==0) ShieldPanel { Text(stringResource(R.string.empty),style=MaterialTheme.typography.bodyLarge) }
     else {
         val index=model.saved.optInt("active",0).coerceIn(0,library.length()-1)
@@ -200,7 +211,7 @@ private fun bytes(value:Long):String = if(value>=1024*1024) String.format(Locale
 
             }
             if(visible<order.size) ShieldButton(stringResource(R.string.show_more),{visible+=20},modifier=Modifier.fillMaxWidth())
-            Text(stringResource(R.string.nodes_hint),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            ExpandableDetail(stringResource(R.string.routing_info),stringResource(R.string.nodes_hint))
         }
     }
     if(importing) ImportDialog(model) {importing=false}
@@ -214,8 +225,9 @@ private fun bytes(value:Long):String = if(value>=1024*1024) String.format(Locale
             ShieldField(name,{name=it},stringResource(R.string.profile_name))
             ShieldField(input,{input=it},stringResource(R.string.import_hint),singleLine=false)
             Text(stringResource(R.string.subscription_hint),style=MaterialTheme.typography.bodySmall)
+            ExpandableDetail(stringResource(R.string.wireguard_info),stringResource(R.string.wireguard_policy))
         }
-        ShieldButton(stringResource(R.string.save),{model.import(name,input);input="";onDismiss()},enabled=input.isNotBlank(),primary=true)
+        ShieldButton(stringResource(R.string.save),{model.import(name,input) {input="";onDismiss()}},enabled=input.isNotBlank() && !model.busy,primary=true)
         ShieldButton(stringResource(R.string.cancel),onDismiss)
     }
 }

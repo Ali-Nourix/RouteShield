@@ -28,5 +28,6 @@ object TunnelStatus {
         value=value.copy(up=up,down=down,totalUp=totalUp,totalDown=totalDown); listeners.forEach { it(value) }
     }
     @Synchronized fun group(selected:String?,delays:Map<String,Int>) { value=value.copy(selected=selected,delays=delays); listeners.forEach { it(value) } }
+    @Synchronized fun clearExit() {value=value.copy(exitIp=null);listeners.forEach {it(value)}}
     @Synchronized fun exit(ip:String) { value=value.copy(exitIp=ip); listeners.forEach { it(value) } }
 }

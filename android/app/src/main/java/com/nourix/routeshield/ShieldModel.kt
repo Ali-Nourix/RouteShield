@@ -27,21 +27,33 @@ class ShieldModel(application: Application) : AndroidViewModel(application) {
     init { TunnelStatus.listeners.add(observer); io { val data=store.load(); if(!data.has("library")) {
         val old=data.optJSONArray("nodes"); val list=JSONArray(); if(old!=null && old.length()>0) list.put(JSONObject().put("id",UUID.randomUUID().toString()).put("name","Imported").put("nodes",old))
         data.put("library",list).remove("nodes") }; data } }
-    private fun io(action: suspend ()->JSONObject) {
+    private fun io(errorResource:Int=R.string.operation_error, onSuccess:()->Unit={}, action: suspend ()->JSONObject) {
         if (busy) return
         busy=true
-        viewModelScope.launch { try { saved=withContext(Dispatchers.IO) { action() }; revision++ }
-            catch(e:Exception) { message="Operation failed. Check the input, network, or local key." }
+        viewModelScope.launch { try { saved=withContext(Dispatchers.IO) { action() }; revision++; onSuccess() }
+            catch(e:kotlinx.coroutines.CancellationException) {throw e}
+            catch(e:Exception) { message=getApplication<Application>().getString(errorResource) }
             finally { busy=false } }
     }
-    fun import(name:String, input:String) = io {
+    fun import(name:String, input:String, onImported:()->Unit={}) = io(R.string.import_error,onImported) { addProfile(name,input) }
+    fun importDocument(uri:android.net.Uri) = io(R.string.import_file_error,{message=getApplication<Application>().getString(R.string.imported_file)}) {
+        check(!tunnel.running) { "Disconnect before importing" }
+        val resolver=getApplication<Application>().contentResolver
+        val input=resolver.openInputStream(uri)?.use(ProfileDocument::read) ?: error("Cannot open profile")
+        val name=runCatching {resolver.query(uri,arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),null,null,null)?.use {
+            if(it.moveToFirst()) it.getString(0)?.substringBeforeLast('.')?.take(80) else null
+        }}.getOrNull().orEmpty()
+        addProfile(name,input)
+    }
+    private fun addProfile(name:String,input:String):JSONObject {
+        check(!tunnel.running) { "Disconnect before importing" }
         val data=JSONObject(saved.toString()); val url=input.trim().takeIf { it.startsWith("https://") }
         val result=url?.let(SubscriptionFetch::fetch)
         val nodes=ProfileConfig.import(result?.body ?: input)
-        val entry=JSONObject().put("id",UUID.randomUUID().toString()).put("name",name.trim().take(80).ifBlank { "Import" }).put("nodes",nodes)
+        val entry=JSONObject().put("id",UUID.randomUUID().toString()).put("name",name.filterNot(Char::isISOControl).trim().take(80).ifBlank { "Import" }).put("nodes",nodes)
         if(url!=null) entry.put("url",url).put("usage",result!!.usage).put("updated",System.currentTimeMillis())
         data.getJSONArray("library").put(entry); data.put("active",data.getJSONArray("library").length()-1).put("selected",0)
-        store.save(data); data
+        store.save(data); return data
     }
     fun refresh(index:Int) = io {
         val data=JSONObject(saved.toString()); val item=data.getJSONArray("library").getJSONObject(index)

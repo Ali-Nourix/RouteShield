@@ -1,6 +1,11 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 package com.nourix.routeshield.designsystem
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
@@ -9,11 +14,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.PowerSettingsNew
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
@@ -49,18 +57,22 @@ private class ConnectionFlower: Shape {
     }
 }
 
-@Composable fun ExpressiveConnectControl(label:String,state:String,running:Boolean,working:Boolean,enabled:Boolean,onClick:()->Unit) {
+@Composable fun ExpressiveConnectControl(label:String,state:String,running:Boolean,working:Boolean,enabled:Boolean,onClick:()->Unit,online:Boolean=false) {
     val interaction=remember {MutableInteractionSource()}
     val flower=remember {ConnectionFlower()}
-    val color by animateColorAsState(if(running) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primary,MaterialTheme.motionScheme.fastEffectsSpec(),label="connection-color")
-    val foreground=if(running) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimary
+    val verified=online && running && !working
+    val dark=MaterialTheme.colorScheme.surface.luminance()<0.5f
+    val color by animateColorAsState(if(verified) ConnectionFeedback.fill(dark) else MaterialTheme.colorScheme.surfaceContainerHigh,MaterialTheme.motionScheme.fastEffectsSpec(),label="connection-color")
+    val foreground=if(verified) ConnectionFeedback.content(dark) else MaterialTheme.colorScheme.onSurface
     Column(Modifier.widthIn(min=144.dp,max=224.dp).clickable(interactionSource=interaction,indication=LocalIndication.current,enabled=enabled,role=Role.Button,onClick=onClick)
         .semantics {stateDescription=state}.padding(8.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(12.dp)) {
         Surface(color=if(enabled) color else MaterialTheme.colorScheme.surfaceContainerHighest,contentColor=if(enabled) foreground else MaterialTheme.colorScheme.onSurfaceVariant,
             shape=flower,modifier=Modifier.size(if(LocalConfiguration.current.fontScale>=1.5f) 144.dp else 160.dp)) {
             Box(contentAlignment=Alignment.Center) {
                 if(working) LoadingIndicator(modifier=Modifier.size(64.dp),color=foreground)
-                else Icon(Icons.Rounded.PowerSettingsNew,null,Modifier.size(60.dp))
+                else AnimatedContent(targetState=verified,transitionSpec={fadeIn(tween(160)) togetherWith fadeOut(tween(80))},label="connection-confirmation") { verified ->
+                    Icon(if(verified) Icons.Rounded.Check else Icons.Rounded.PowerSettingsNew,null,Modifier.size(60.dp))
+                }
             }
         }
         Text(label,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
