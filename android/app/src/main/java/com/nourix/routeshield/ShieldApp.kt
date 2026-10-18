@@ -3,7 +3,6 @@ package com.nourix.routeshield
 
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
@@ -145,7 +144,7 @@ import java.util.Locale
 }
 @Composable private fun ExpandableDetail(title:String,detail:String) {
     var expanded by remember {mutableStateOf(false)}
-    Column(Modifier.animateContentSize(animationSpec=MaterialTheme.motionScheme.fastSpatialSpec())) {
+    Column {
         ShieldTextAction(title,{expanded=!expanded})
         AnimatedVisibility(expanded) {Text(detail,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
@@ -221,7 +220,7 @@ private fun bytes(value:Long):String = if(value>=1024*1024) String.format(Locale
 @Composable private fun ImportDialog(model:ShieldModel,onDismiss:()->Unit) {
     var name by remember {mutableStateOf("")}; var input by remember {mutableStateOf("")}
     var error by remember {mutableStateOf<String?>(null)}
-    ShieldDialog(stringResource(R.string.import_profiles),{if(!model.busy) onDismiss()},secure=true) {
+    ShieldDialog(stringResource(R.string.import_profiles),{if(!model.busy) onDismiss()},secure=true,dismissible=!model.busy) {
         Column(Modifier.weight(1f,false).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             ShieldField(name,{name=it},stringResource(R.string.profile_name))
             ShieldField(input,{input=it;error=null},stringResource(R.string.import_hint),singleLine=false)

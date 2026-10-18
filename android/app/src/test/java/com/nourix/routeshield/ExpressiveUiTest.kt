@@ -2,7 +2,6 @@ package com.nourix.routeshield
 
 import androidx.activity.compose.setContent
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -166,6 +165,6 @@ class ExpressiveUiTest {
         compose.onNodeWithText("Could not import. Check the config, keys, or HTTPS subscription.").assertExists()
         field.assertTextContains("not-a-config")
         File("build/ui-qa").mkdirs()
-        compose.onNode(isDialog()).captureRoboImage("build/ui-qa/import-error-retains-input.png")
+        compose.onNodeWithTag("profile-import-sheet").captureRoboImage("build/ui-qa/import-error-retains-input.png")
     }
 }

@@ -30,6 +30,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -134,10 +135,17 @@ object ShieldSpace { val small=8.dp; val medium=16.dp; val gutter=16.dp; val sec
     ListItem(colors=ListItemDefaults.colors(containerColor=Color.Transparent),headlineContent={Text(label)},leadingContent={Checkbox(checked=checked,onCheckedChange=onChange,enabled=enabled)})
 }
 @Composable fun ShieldRule() { HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant) }
-@Composable fun ShieldDialog(title:String,onDismiss:()->Unit,secure:Boolean=false,content:@Composable ColumnScope.()->Unit) {
-    androidx.compose.ui.window.Dialog(onDismissRequest=onDismiss,properties=androidx.compose.ui.window.DialogProperties(securePolicy=if(secure) androidx.compose.ui.window.SecureFlagPolicy.SecureOn else androidx.compose.ui.window.SecureFlagPolicy.Inherit)) {
-        Surface(modifier=Modifier.fillMaxWidth(),shape=MaterialTheme.shapes.extraLarge,color=MaterialTheme.colorScheme.surfaceContainerHigh) {
-            Column(Modifier.padding(24.dp).heightIn(max=600.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) { Text(title,style=MaterialTheme.typography.headlineSmall); content() }
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable fun ShieldDialog(title:String,onDismiss:()->Unit,secure:Boolean=false,dismissible:Boolean=true,content:@Composable ColumnScope.()->Unit) {
+    val canDismiss by rememberUpdatedState(dismissible)
+    val state=rememberModalBottomSheetState(skipPartiallyExpanded=true,confirmValueChange={it!=SheetValue.Hidden || canDismiss})
+    ModalBottomSheet(onDismissRequest=onDismiss,sheetState=state,
+        properties=ModalBottomSheetProperties(securePolicy=if(secure) androidx.compose.ui.window.SecureFlagPolicy.SecureOn else androidx.compose.ui.window.SecureFlagPolicy.Inherit,
+            shouldDismissOnBackPress=dismissible,shouldDismissOnClickOutside=dismissible),
+        containerColor=MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Column(Modifier.fillMaxWidth().heightIn(max=600.dp).padding(horizontal=24.dp).padding(bottom=24.dp)
+            .testTag("profile-import-sheet"),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+            Text(title,style=MaterialTheme.typography.headlineSmall);content()
         }
     }
 }
