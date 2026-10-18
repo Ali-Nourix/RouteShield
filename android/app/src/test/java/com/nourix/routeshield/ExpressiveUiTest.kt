@@ -156,15 +156,23 @@ class ExpressiveUiTest {
     }
     @Test fun invalid_paste_keeps_input_and_explains_error_in_dialog() {
         compose.waitForIdle();compose.onNodeWithText("Profiles").performClick();compose.waitForIdle()
-        compose.onNodeWithText("Import profiles").performClick();compose.waitForIdle()
+        // Freeze the blinking editable cursor / sheet motion while driving this host test.
+        // Explicit frames still apply edits and all final UI/error assertions remain active.
+        compose.mainClock.autoAdvance=false
+        compose.onNodeWithText("Import profiles").performClick()
+        compose.mainClock.advanceTimeBy(1000);compose.waitForIdle()
         val field=compose.onNodeWithText("Link or config")
         field.performTextInput("not-a-config")
+        compose.mainClock.advanceTimeBy(300);compose.waitForIdle()
         compose.onNodeWithText("Import",useUnmergedTree=true).performClick()
         val model=androidx.lifecycle.ViewModelProvider(compose.activity)[ShieldModel::class.java]
-        compose.waitUntil(5_000) {!model.busy};compose.waitForIdle()
+        compose.waitUntil(5_000) {!model.busy}
+        compose.mainClock.advanceTimeBy(300);compose.waitForIdle()
         compose.onNodeWithText("Could not import. Check the config, keys, or HTTPS subscription.").assertExists()
         field.assertTextContains("not-a-config")
         File("build/ui-qa").mkdirs()
         compose.onNodeWithTag("profile-import-sheet").captureRoboImage("build/ui-qa/import-error-retains-input.png")
+        compose.onNodeWithText("Cancel").performClick()
+        compose.mainClock.advanceTimeBy(1000);compose.mainClock.autoAdvance=true
     }
 }
