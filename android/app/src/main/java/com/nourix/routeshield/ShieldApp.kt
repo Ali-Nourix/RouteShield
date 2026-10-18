@@ -2,8 +2,6 @@
 package com.nourix.routeshield
 
 import android.content.Intent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.*
@@ -42,7 +40,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.util.Locale
 
-@Composable fun ShieldApp(model:ShieldModel,onConnect:()->Unit,onSystemVpn:()->Unit,onExport:()->Unit) {
+@Composable fun ShieldApp(model:ShieldModel,onConnect:()->Unit,onSystemVpn:()->Unit,onExport:()->Unit,onImportFile:()->Unit={}) {
     ShieldTheme(model.saved.optString("theme","system"),model.saved.optString("language","system"),model.saved.optString("themeSeed","brand")) {
         var page by remember { mutableIntStateOf(0) }
         val labels=listOf(stringResource(R.string.connection),stringResource(R.string.profiles),stringResource(R.string.applications),stringResource(R.string.settings))
@@ -52,7 +50,7 @@ import java.util.Locale
                 if(model.busy) ShieldBusy()
                 when(page) {
                     0->ConnectionScreen(model,onConnect,onSystemVpn) {page=1}
-                    1->ProfilesScreen(model)
+                    1->ProfilesScreen(model,onImportFile)
                     2->ApplicationsScreen(model)
                     else->SettingsScreen(model,onSystemVpn,onExport)
                 }
@@ -159,17 +157,16 @@ import java.util.Locale
     }
 }
 private fun bytes(value:Long):String = if(value>=1024*1024) String.format(Locale.ROOT,"%.1f MiB",value/1048576.0) else String.format(Locale.ROOT,"%.1f KiB",value/1024.0)
-@Composable private fun ProfilesScreen(model:ShieldModel) {
+@Composable private fun ProfilesScreen(model:ShieldModel,onImportFile:()->Unit) {
     var importing by remember { mutableStateOf(false) }; var deletion by remember {mutableIntStateOf(-1)}
     var visible by remember {mutableIntStateOf(20)}
     var profileMenu by remember {mutableStateOf(false)}
     val library=model.saved.optJSONArray("library") ?: JSONArray()
-    val filePicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri-> if(uri!=null) model.importDocument(uri)}
     val edit=!model.tunnel.running && !model.busy
     val switchable=!model.busy && model.tunnel.stage !in setOf("starting","stopping")
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
         ShieldButton(stringResource(R.string.import_profiles),{importing=true},enabled=edit,primary=true,modifier=Modifier.fillMaxWidth())
-        ShieldButton(stringResource(R.string.import_file),{filePicker.launch(arrayOf("*/*"))},enabled=edit,modifier=Modifier.fillMaxWidth())
+        ShieldButton(stringResource(R.string.import_file),onImportFile,enabled=edit,modifier=Modifier.fillMaxWidth())
         ExpandableDetail(stringResource(R.string.wireguard_info),stringResource(R.string.wireguard_policy))
     }
     if(library.length()==0) ShieldPanel { Text(stringResource(R.string.empty),style=MaterialTheme.typography.bodyLarge) }
@@ -224,7 +221,7 @@ private fun bytes(value:Long):String = if(value>=1024*1024) String.format(Locale
 @Composable private fun ImportDialog(model:ShieldModel,onDismiss:()->Unit) {
     var name by remember {mutableStateOf("")}; var input by remember {mutableStateOf("")}
     var error by remember {mutableStateOf<String?>(null)}
-    ShieldDialog(stringResource(R.string.import_profiles),onDismiss,secure=true) {
+    ShieldDialog(stringResource(R.string.import_profiles),{if(!model.busy) onDismiss()},secure=true) {
         Column(Modifier.weight(1f,false).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             ShieldField(name,{name=it},stringResource(R.string.profile_name))
             ShieldField(input,{input=it;error=null},stringResource(R.string.import_hint),singleLine=false)
@@ -233,7 +230,7 @@ private fun bytes(value:Long):String = if(value>=1024*1024) String.format(Locale
             ExpandableDetail(stringResource(R.string.wireguard_info),stringResource(R.string.wireguard_policy))
         }
         ShieldButton(stringResource(R.string.save),{error=null;model.import(name,input,onFailed={error=it}) {input="";onDismiss()}},enabled=input.isNotBlank() && !model.busy,primary=true)
-        ShieldButton(stringResource(R.string.cancel),onDismiss)
+        ShieldButton(stringResource(R.string.cancel),onDismiss,enabled=!model.busy)
     }
 }
 @Composable private fun ApplicationsScreen(model:ShieldModel) {

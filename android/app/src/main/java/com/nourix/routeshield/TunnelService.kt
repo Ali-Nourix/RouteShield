@@ -152,8 +152,7 @@ class TunnelService : VpnService(), CommandServerHandler {
             } }
             val now=android.os.SystemClock.elapsedRealtime()
             if(current(expectedEpoch,expectedGeneration) && now-lastExitCheck>60_000) {
-                lastExitCheck=now
-                maintenance.submit("exit-ip") {checkExitIp(expectedEpoch,expectedNetwork)}
+                if(maintenance.submit("exit-ip") {checkExitIp(expectedEpoch,expectedNetwork)}) lastExitCheck=now
             }
         } catch (e: Exception) {
             if(!current(expectedEpoch,expectedGeneration)) return

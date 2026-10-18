@@ -18,9 +18,13 @@ class MainActivity:ComponentActivity() {
     private val document=registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         if(uri!=null) lifecycleExport(uri)
     }
+    // Register with the Activity, not the locale-scoped Compose context.
+    private val profileDocument=registerForActivityResult(ActivityResultContracts.OpenDocument()) {uri->
+        if(uri!=null) model.importDocument(uri)
+    }
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState); enableEdgeToEdge(); model=ViewModelProvider(this)[ShieldModel::class.java]
-        setContent { ShieldApp(model,onConnect={ toggle() },onSystemVpn={ startActivity(Intent(Settings.ACTION_VPN_SETTINGS)) },onExport={document.launch("RouteShield-diagnostics.txt")}) }
+        setContent { ShieldApp(model,onConnect={ toggle() },onSystemVpn={ startActivity(Intent(Settings.ACTION_VPN_SETTINGS)) },onExport={document.launch("RouteShield-diagnostics.txt")},onImportFile={profileDocument.launch(arrayOf("*/*"))}) }
     }
     override fun onResume() { super.onResume(); TunnelService.refreshProtection() }
     private fun toggle() {
