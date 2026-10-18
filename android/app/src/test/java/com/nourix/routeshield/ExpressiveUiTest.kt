@@ -166,7 +166,10 @@ class ExpressiveUiTest {
         compose.mainClock.advanceTimeBy(300);compose.waitForIdle()
         compose.onNodeWithText("Import",useUnmergedTree=true).performClick()
         val model=androidx.lifecycle.ViewModelProvider(compose.activity)[ShieldModel::class.java]
-        compose.waitUntil(5_000) {!model.busy}
+        compose.waitUntil(5_000) {
+            compose.mainClock.advanceTimeByFrame() // Also dispatch ViewModel completion on the paused host clock.
+            !model.busy
+        }
         compose.mainClock.advanceTimeBy(300);compose.waitForIdle()
         compose.onNodeWithText("Could not import. Check the config, keys, or HTTPS subscription.").assertExists()
         field.assertTextContains("not-a-config")
