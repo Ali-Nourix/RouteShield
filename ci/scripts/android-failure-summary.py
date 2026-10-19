@@ -16,4 +16,5 @@ if not found:
     if path.exists():
         lines=path.read_text(errors='replace').splitlines()
         causes=[line for line in lines if 'Caused by:' in line or 'No space left' in line or 'OutOfMemoryError' in line]
-        emit('\n'.join(causes[-12:]+lines[-45:]))
+        compiler=[line for line in lines if line.startswith(('e: ', 'error: '))]
+        emit('\n'.join(compiler[:24]+causes[-6:]+lines[-20:]))
