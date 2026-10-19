@@ -114,7 +114,7 @@
 <string name="kill_detail">Enable Always-on VPN and Block connections without VPN in Android settings. This also protects if RouteShield stops. Excluded apps may be blocked instead of connecting directly. Intentional Disconnect may leave internet blocked until lockdown is disabled.</string>
 <string name="kill_setup">Configure system Kill Switch</string>
 <string name="catalog_coverage">Known installed apps: %1$d · Offline catalog: %2$d IDs. Unknown apps stay on VPN.</string>
-<string name="degraded">Checking route quality…</string>
+<string name="degraded">Limited connection</string>
 <string name="prefer_stability">Prefer stable automatic routes</string>
 <string name="stability_detail">Keep a healthy route through small delay changes. Recheck persistent slowdowns and outages without direct fallback.</string>
 <string name="private_local">Stored on this device</string>
@@ -145,4 +145,19 @@
 <string name="imported_file">Profile added. DNS and app routing follow RouteShield settings.</string>
 <string name="wireguard_info">WireGuard import details</string>
 <string name="wireguard_policy">Standard WireGuard .conf and pasted configs are supported. DNS and app routing follow RouteShield settings, not the file. AllowedIPs and keepalive are preserved. Scripts and AmneziaWG settings are not supported.</string>
+<string name="choose_subscription">Choose subscription</string>
+<string name="subscription_count">%1$d profiles · Tap to switch</string>
+<string name="search_subscriptions">Search subscriptions</string>
+<string name="search_servers">Search servers</string>
+<string name="ping_order">Lowest ping first · Unmeasured last</string>
+<string name="switch_subscription">Switch subscription?</string>
+<string name="switch_subscription_detail">The VPN reconnects with this profile. Traffic may pause briefly. Use Android’s Block connections without VPN to prevent direct traffic during reconnection.</string>
+<string name="switch_reconnect">Switch and reconnect</string>
+<string name="switch_error">Could not switch. Check the profile and reconnect.</string>
+<string name="internet_not_verified">Internet not fully verified</string>
+<string name="internet_check_detail">The tunnel is active, but DNS or an HTTPS check failed. Try another server; an open tunnel alone does not confirm Internet access.</string>
+<string name="limited_app_routing">Only selected apps use the VPN. Review Applications if other apps do not work.</string>
+<string name="https_check_result">HTTPS checks: %1$d/2</string>
+<string name="dns_check_pass">DNS: verified</string>
+<string name="dns_check_fail">DNS: failed</string>
 </resources>

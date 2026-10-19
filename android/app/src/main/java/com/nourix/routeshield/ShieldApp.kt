@@ -13,6 +13,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
@@ -48,7 +49,7 @@ import java.util.Locale
             Column(Modifier.fillMaxWidth().verticalScroll(screenScroll).padding(horizontal=if(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp>=600) 24.dp else ShieldSpace.gutter,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
                 if(model.busy) ShieldBusy()
                 when(page) {
-                    0->ConnectionScreen(model,onConnect,onSystemVpn) {page=1}
+                    0->ConnectionScreen(model,onConnect,onSystemVpn,{page=1},{page=2})
                     1->ProfilesScreen(model,onImportFile)
                     2->ApplicationsScreen(model)
                     else->SettingsScreen(model,onSystemVpn,onExport)
@@ -58,11 +59,12 @@ import java.util.Locale
         }
     }
 }
-@Composable private fun ConnectionScreen(model:ShieldModel,onConnect:()->Unit,onVpn:()->Unit,onProfiles:()->Unit) {
+@Composable private fun ConnectionScreen(model:ShieldModel,onConnect:()->Unit,onVpn:()->Unit,onProfiles:()->Unit,onApplications:()->Unit) {
     val value=model.tunnel
     val resource=when(value.stage) {"starting"->R.string.starting;"ready"->R.string.ready;"online"->R.string.online;"waiting"->R.string.waiting;"degraded"->R.string.degraded;"error"->R.string.error;"permission"->R.string.permission;"stopping"->R.string.stopping;else->R.string.idle}
     val nodes=ProfileConfig.activeNodes(model.saved)
     var routes by remember {mutableStateOf(false)}
+    var subscriptions by remember {mutableStateOf(false)}
     Column(Modifier.fillMaxWidth().padding(vertical=8.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             Surface(shape=RoundedCornerShape(50),color=if(value.stage=="online") MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh) {
@@ -89,11 +91,22 @@ import java.util.Locale
                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                     Text(stringResource(R.string.current_route),style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(routeName(model,nodes),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
+                    model.saved.optJSONArray("library")?.optJSONObject(model.saved.optInt("active",0))?.let {Text(it.optString("name"),style=MaterialTheme.typography.bodySmall)}
                     Text(stringResource(if(model.saved.optInt("selected")==0) R.string.auto_route_hint else R.string.manual_route_hint),style=MaterialTheme.typography.bodySmall)
                 }
                 Icon(Icons.Rounded.KeyboardArrowDown,stringResource(R.string.change_server))
             }
         }
+    }
+    if(value.stage=="degraded" || value.stage=="waiting") ShieldPanel(compact=true) {
+        Text(stringResource(R.string.internet_not_verified),style=MaterialTheme.typography.titleMedium,color=MaterialTheme.colorScheme.error)
+        Text(stringResource(R.string.internet_check_detail),style=MaterialTheme.typography.bodySmall)
+        value.httpsChecks?.let {Text(stringResource(R.string.https_check_result,it),style=MaterialTheme.typography.labelLarge)}
+        value.dnsVerified?.let {Text(stringResource(if(it) R.string.dns_check_pass else R.string.dns_check_fail),style=MaterialTheme.typography.labelLarge)}
+    }
+    if(value.running && model.saved.optString("mode","all")=="include") ShieldPanel(compact=true) {
+        Text(stringResource(R.string.limited_app_routing),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.error)
+        ShieldTextAction(stringResource(R.string.applications),onApplications)
     }
     ExpressiveQuality(value.latencyHistory,value.latencyMs)
     ShieldPanel(compact=true) {
@@ -115,12 +128,15 @@ import java.util.Locale
         ShieldTextAction(stringResource(R.string.kill_setup),onVpn)
         ExpandableDetail(stringResource(R.string.protection_info),stringResource(R.string.kill_detail))
     }
+    if(subscriptions) SubscriptionPicker(model) {subscriptions=false}
     if(routes) ModalBottomSheet(onDismissRequest={routes=false}) {
         Column(Modifier.fillMaxWidth().testTag("route-sheet").verticalScroll(rememberScrollState()).padding(horizontal=16.dp).padding(bottom=32.dp),verticalArrangement=Arrangement.spacedBy(2.dp)) {
             Text(stringResource(R.string.change_server),Modifier.padding(vertical=12.dp),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
+            ShieldTextAction(stringResource(R.string.choose_subscription),{routes=false;subscriptions=true})
+            Text(stringResource(R.string.ping_order),style=MaterialTheme.typography.bodySmall)
             val enabled=!model.busy && model.tunnel.stage !in setOf("starting","stopping")
             ShieldNodeRow(stringResource(R.string.auto_short),stringResource(R.string.auto_detail),null,model.saved.optInt("selected")==0,enabled) {model.select(model.saved.optInt("active"),0);routes=false}
-            (0 until nodes.length()).take(40).forEach {index ->
+            NodeOrder.byLatency(nodes.length(),model.tunnel.delays).take(40).forEach {index ->
                 val node=nodes.getJSONObject(index)
                 ShieldNodeRow(node.optString("tag"),node.optString("type").uppercase(),model.tunnel.delays["node-$index"]?.let {stringResource(R.string.ms_value,it)},model.saved.optInt("selected")==index+1,enabled) {model.select(model.saved.optInt("active"),index+1);routes=false}
             }
@@ -160,35 +176,43 @@ private fun bytes(value:Long):String = if(value>=1024*1024) String.format(Locale
     var importing by remember { mutableStateOf(false) }; var deletion by remember {mutableIntStateOf(-1)}
     var visible by remember {mutableIntStateOf(20)}
     var profileMenu by remember {mutableStateOf(false)}
+    var subscriptions by remember {mutableStateOf(false)}
+    var query by remember {mutableStateOf("")}
     val library=model.saved.optJSONArray("library") ?: JSONArray()
     val edit=!model.tunnel.running && !model.busy
     val switchable=!model.busy && model.tunnel.stage !in setOf("starting","stopping")
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
         ShieldButton(stringResource(R.string.import_profiles),{importing=true},enabled=edit,primary=true,modifier=Modifier.fillMaxWidth())
-        ShieldButton(stringResource(R.string.import_file),onImportFile,enabled=edit,modifier=Modifier.fillMaxWidth())
-        ExpandableDetail(stringResource(R.string.wireguard_info),stringResource(R.string.wireguard_policy))
+        ShieldTextAction(stringResource(R.string.import_file),onImportFile,enabled=edit)
+
     }
     if(library.length()==0) ShieldPanel { Text(stringResource(R.string.empty),style=MaterialTheme.typography.bodyLarge) }
     else {
         val index=model.saved.optInt("active",0).coerceIn(0,library.length()-1)
         val group=library.getJSONObject(index); val nodes=group.getJSONArray("nodes")
-        LaunchedEffect(index) {visible=20}
-        ShieldGroupTabs((0 until library.length()).map {library.getJSONObject(it).optString("name")},index,edit) {model.select(it)}
-        ShieldPanel(compact=true) {
-            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.Top,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                    Text(stringResource(R.string.active_profile),style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        LaunchedEffect(index,query) {visible=20}
+        Surface(onClick={query="";subscriptions=true},enabled=switchable,shape=RoundedCornerShape(24.dp),color=MaterialTheme.colorScheme.secondaryContainer,
+            modifier=Modifier.fillMaxWidth().testTag("subscription-selector")) {
+            Row(Modifier.padding(20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                    Text(stringResource(R.string.active_profile),style=MaterialTheme.typography.labelMedium)
                     Text(group.optString("name"),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    Text(stringResource(R.string.subscription_count,library.length()),style=MaterialTheme.typography.bodySmall)
                 }
+                Icon(Icons.Rounded.KeyboardArrowDown,stringResource(R.string.choose_subscription))
+            }
+        }
+        ShieldPanel(compact=true) {
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.profile_summary,nodes.length(),stringResource(if(group.has("url")) R.string.subscription else R.string.manual)),Modifier.weight(1f),style=MaterialTheme.typography.bodyMedium)
+                if(group.has("url")) IconButton(onClick={model.refresh(index)},enabled=edit) {Icon(Icons.Rounded.Refresh,stringResource(R.string.refresh))}
                 Box {
                     IconButton(onClick={profileMenu=true},enabled=edit) {Icon(Icons.Rounded.MoreVert,stringResource(R.string.manage_profile))}
                     DropdownMenu(expanded=profileMenu,onDismissRequest={profileMenu=false}) {
-                        if(group.has("url")) DropdownMenuItem(text={Text(stringResource(R.string.refresh))},onClick={profileMenu=false;model.refresh(index)})
                         DropdownMenuItem(text={Text(stringResource(R.string.delete),color=MaterialTheme.colorScheme.error)},onClick={profileMenu=false;deletion=index})
                     }
                 }
             }
-            Text(stringResource(R.string.profile_summary,nodes.length(),stringResource(if(group.has("url")) R.string.subscription else R.string.manual)),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
             group.optJSONObject("usage")?.let { usage ->
                 SubscriptionMetadata.remaining(usage)?.let { Text(stringResource(R.string.quota_left)+": "+bytes(it),style=MaterialTheme.typography.bodyMedium) }
                 if(usage.optLong("expire") in 1..SubscriptionMetadata.MAX_EXPIRY) Text(stringResource(R.string.expires)+": "+Instant.ofEpochSecond(usage.getLong("expire")).atZone(ZoneId.systemDefault()).toLocalDate(),style=MaterialTheme.typography.bodySmall)
@@ -201,8 +225,10 @@ private fun bytes(value:Long):String = if(value>=1024*1024) String.format(Locale
                 ShieldTextAction(stringResource(R.string.test_nodes_short),{model.testNodes()},enabled=model.tunnel.running && model.tunnel.stage!="stopping" && nodes.length()>1 && !model.busy)
             }
             ShieldNodeRow(stringResource(R.string.auto_short),stringResource(R.string.auto_detail),model.tunnel.selected?.let {tag-> tag.removePrefix("node-").toIntOrNull()?.let {i->if(i in 0 until nodes.length()) nodes.getJSONObject(i).optString("tag") else null} },model.saved.optInt("selected")==0,switchable) {model.select(index,0)}
+            ShieldField(query,{query=it},stringResource(R.string.search_servers))
+            Text(stringResource(R.string.ping_order),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(6.dp))
-            val order=(0 until nodes.length()).toList().let {list->if(model.saved.optBoolean("sortLatency")) list.sortedBy {model.tunnel.delays["node-$it"] ?: Int.MAX_VALUE} else list}
+            val order=NodeOrder.byLatency(nodes.length(),model.tunnel.delays).filter {query.isBlank() || nodes.getJSONObject(it).optString("tag").contains(query,true)}
             order.take(visible).forEach {node->
                 val item=nodes.getJSONObject(node); val delay=model.tunnel.delays["node-$node"]
                 ShieldNodeRow(item.optString("tag"),item.optString("type").uppercase(),delay?.let {stringResource(R.string.ms_value,it)} ?: "—",
@@ -213,9 +239,35 @@ private fun bytes(value:Long):String = if(value>=1024*1024) String.format(Locale
             ExpandableDetail(stringResource(R.string.routing_info),stringResource(R.string.nodes_hint))
         }
     }
+    if(subscriptions) SubscriptionPicker(model) {subscriptions=false}
     if(importing) ImportDialog(model) {importing=false}
     if(deletion>=0) ShieldConfirm(stringResource(R.string.delete),stringResource(R.string.delete_profile_prompt),stringResource(R.string.delete),stringResource(R.string.cancel),
         {model.delete(deletion);deletion=-1},{deletion=-1})
+}
+@Composable private fun SubscriptionPicker(model:ShieldModel,onDismiss:()->Unit) {
+    var query by remember {mutableStateOf("")}
+    var switchTo by remember {mutableIntStateOf(-1)}
+    val library=model.saved.optJSONArray("library") ?: JSONArray()
+    ModalBottomSheet(onDismissRequest={if(!model.busy) onDismiss()},sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true,confirmValueChange={it!=SheetValue.Hidden || !model.busy})) {
+        Column(Modifier.fillMaxWidth().testTag("subscription-picker").padding(horizontal=20.dp).padding(bottom=24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+            Text(stringResource(R.string.choose_subscription),style=MaterialTheme.typography.headlineSmall)
+            if(library.length()>5) ShieldField(query,{query=it},stringResource(R.string.search_subscriptions))
+            Column(Modifier.weight(1f,false).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                (0 until library.length()).filter {query.isBlank() || library.getJSONObject(it).optString("name").contains(query,true)}.forEach {index->
+                    val group=library.getJSONObject(index)
+                    ShieldNodeRow(group.optString("name"),stringResource(R.string.profile_summary,group.getJSONArray("nodes").length(),
+                        stringResource(if(group.has("url")) R.string.subscription else R.string.manual)),null,index==model.saved.optInt("active",0),!model.busy) {
+                        if(index==model.saved.optInt("active",0)) onDismiss()
+                        else if(model.tunnel.running) switchTo=index
+                        else model.selectGroup(index,onDismiss)
+                    }
+                }
+            }
+        }
+    }
+    if(switchTo>=0) ShieldConfirm(stringResource(R.string.switch_subscription),stringResource(R.string.switch_subscription_detail),
+        stringResource(R.string.switch_reconnect),stringResource(R.string.cancel),
+        {val chosen=switchTo;switchTo=-1;model.selectGroup(chosen,onDismiss)},{switchTo=-1})
 }
 @Composable private fun ImportDialog(model:ShieldModel,onDismiss:()->Unit) {
     var name by remember {mutableStateOf("")}; var input by remember {mutableStateOf("")}
@@ -279,7 +331,6 @@ private fun bytes(value:Long):String = if(value>=1024*1024) String.format(Locale
         ShieldSetting(stringResource(R.string.refuse_quic),stringResource(R.string.quic_detail),model.saved.optBoolean("refuseQuic",true),{model.settings {put("refuseQuic",it)}},edit)
         ShieldSetting(stringResource(R.string.domestic),stringResource(R.string.domestic_detail),model.saved.optBoolean("domestic"),{model.settings {put("domestic",it)}},edit)
         ShieldSetting(stringResource(R.string.prefer_stability),stringResource(R.string.stability_detail),model.saved.optBoolean("preferStability",true),{model.settings {put("preferStability",it)}},edit)
-        ShieldSetting(stringResource(R.string.sort_latency),stringResource(R.string.latency_detail),model.saved.optBoolean("sortLatency"),{model.settings {put("sortLatency",it)}},!model.busy)
         ShieldButton(stringResource(R.string.vpn_settings),onVpn)
     }
     ShieldPanel {

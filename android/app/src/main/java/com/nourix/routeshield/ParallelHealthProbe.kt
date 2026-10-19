@@ -5,27 +5,32 @@ import java.util.concurrent.ExecutorCompletionService
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 
-/** First verified HTTPS 204 wins. A dead provider cannot delay a healthy provider.
- * Values measure only the successful request, not time spent waiting on a failed provider.
- * Caller must disconnect I/O on return: cancelling a Future alone does not close sockets.
- */
+/** Independent HTTPS + DNS evidence. Caller must close I/O: cancelling futures alone cannot close sockets. */
+data class InternetHealth(val successes:Int,val expected:Int,val latencyMs:Long?) {
+    val verified get()=successes==expected
+    val partial get()=successes in 1 until expected
+}
 object ParallelHealthProbe {
-    fun measure(executor: ExecutorService, checks: List<()->Long?>, deadlineMs: Long = 3500): Long? {
-        require(checks.size in 1..2 && deadlineMs in 1..10_000)
-        val completed = ExecutorCompletionService<Long?>(executor)
-        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(deadlineMs)
-        val futures = checks.map { check -> completed.submit(Callable { runCatching(check).getOrNull() }) }
+    /** All independent checks must succeed; one reachable CDN is not general Internet access. */
+    fun verify(executor:ExecutorService,checks:List<()->Long?>,deadlineMs:Long=3500):InternetHealth {
+        require(checks.size in 2..3 && deadlineMs in 1..10_000)
+        val completed=ExecutorCompletionService<Long?>(executor)
+        val deadline=System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(deadlineMs)
+        val futures=checks.map {check->completed.submit(Callable {runCatching(check).getOrNull()})}
+        val latencies=mutableListOf<Long>()
         try {
             repeat(checks.size) {
-                val remaining = deadline - System.nanoTime()
-                if (remaining <= 0) return null
-                val result = completed.poll(remaining, TimeUnit.NANOSECONDS) ?: return null
-                val latency = result.get()
-                if (latency != null && latency >= 0) return latency
+                val remaining=deadline-System.nanoTime()
+                if(remaining<=0) return InternetHealth(latencies.size,checks.size,latencies.minOrNull())
+                val result=completed.poll(remaining,TimeUnit.NANOSECONDS)
+                    ?: return InternetHealth(latencies.size,checks.size,latencies.minOrNull())
+                result.get()?.takeIf {it>=0}?.let(latencies::add)
             }
-            return null
-        } finally { futures.forEach { it.cancel(true) } }
+            return InternetHealth(latencies.size,checks.size,latencies.minOrNull())
+        } finally {futures.forEach {it.cancel(true)}}
     }
+
+
 }
 
 /** Healthy polling is modest; two failed rounds recover within seconds instead of minutes. */

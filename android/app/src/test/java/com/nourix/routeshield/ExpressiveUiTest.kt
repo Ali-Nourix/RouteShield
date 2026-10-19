@@ -5,6 +5,9 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.assertTextContains
@@ -153,6 +156,57 @@ class ExpressiveUiTest {
         org.junit.Assert.assertNotNull(started)
         org.junit.Assert.assertEquals(android.content.Intent.ACTION_OPEN_DOCUMENT,started.intent.action)
         org.junit.Assert.assertEquals("*/*",started.intent.type)
+    }
+    @Test fun subscriptions_use_a_clear_picker_and_confirm_live_switch() {
+        val model=androidx.lifecycle.ViewModelProvider(compose.activity)[ShieldModel::class.java]
+        compose.waitForIdle();compose.runOnUiThread {
+            val nodes=ProfileConfig.import("trojan://test-only@relay.example:443#Slow\nanytls://test-only@relay.example:443#Fast")
+            model.saved.put("library",org.json.JSONArray().put(org.json.JSONObject().put("name","Everyday routes").put("nodes",nodes))
+                .put(org.json.JSONObject().put("name","Backup routes").put("nodes",nodes)))
+            TunnelStatus.update("online",50);TunnelStatus.group("node-0",mapOf("node-0" to 100,"node-1" to 20))
+            compose.activity.setContent {ShieldApp(model,{}, {}, {})}
+        }
+        compose.waitForIdle();compose.onNodeWithText("Profiles").performClick();compose.waitForIdle()
+        File("build/ui-qa").mkdirs();compose.activity.window.decorView.captureRoboImage("build/ui-qa/profiles-selector.png")
+        compose.onNodeWithTag("subscription-selector").performClick();compose.waitForIdle()
+        compose.onNodeWithTag("subscription-picker").captureRoboImage("build/ui-qa/subscription-picker.png")
+        compose.onNodeWithText("Backup routes").performClick();compose.waitForIdle()
+        compose.onNodeWithText("Switch subscription?").assertExists()
+        compose.onNodeWithText("Switch and reconnect").assertIsEnabled()
+        compose.onNodeWithText("Cancel").performClick();compose.waitForIdle()
+        org.junit.Assert.assertEquals(0,model.saved.optInt("active",0))
+    }
+    @Test fun home_server_picker_orders_lowest_ping_first() {
+        val model=androidx.lifecycle.ViewModelProvider(compose.activity)[ShieldModel::class.java]
+        compose.waitForIdle();compose.runOnUiThread {
+            val nodes=ProfileConfig.import("trojan://test-only@relay.example:443#Slow\nanytls://test-only@relay.example:443#Fast\ntrojan://test-only@relay.example:444#Untested")
+            model.saved.put("library",org.json.JSONArray().put(org.json.JSONObject().put("name","Everyday routes").put("nodes",nodes)))
+            TunnelStatus.update("online",50);TunnelStatus.group("node-0",mapOf("node-0" to 100,"node-1" to 20))
+            compose.activity.setContent {ShieldApp(model,{}, {}, {})}
+        }
+        compose.waitForIdle();compose.onNodeWithText("Current server").performScrollTo()
+        compose.onNodeWithContentDescription("Change server").performClick();compose.waitForIdle()
+        val fast=compose.onNode(hasText("Fast") and hasAnyAncestor(hasTestTag("route-sheet"))).fetchSemanticsNode().boundsInRoot.top
+        val slow=compose.onNode(hasText("Slow") and hasAnyAncestor(hasTestTag("route-sheet"))).fetchSemanticsNode().boundsInRoot.top
+        val unknown=compose.onNode(hasText("Untested") and hasAnyAncestor(hasTestTag("route-sheet"))).fetchSemanticsNode().boundsInRoot.top
+        org.junit.Assert.assertTrue(fast<slow && slow<unknown)
+        compose.onNodeWithTag("route-sheet").captureRoboImage("build/ui-qa/home-sorted-servers.png")
+    }
+    @Test fun partial_internet_does_not_show_a_verified_online_state() {
+        val model=androidx.lifecycle.ViewModelProvider(compose.activity)[ShieldModel::class.java]
+        compose.waitForIdle();compose.runOnUiThread {
+            val nodes=ProfileConfig.import("trojan://test-only@relay.example:443#Test")
+            model.saved.put("library",org.json.JSONArray().put(org.json.JSONObject().put("name","Everyday routes").put("nodes",nodes)))
+            TunnelStatus.update("degraded");TunnelStatus.checks(1,false)
+            compose.activity.setContent {ShieldApp(model,{}, {}, {})}
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("Limited connection").assertExists()
+        compose.onNodeWithText("Internet not fully verified").performScrollTo();compose.waitForIdle()
+        compose.onNodeWithText("HTTPS checks: 1/2").assertExists()
+        compose.onNodeWithText("DNS: failed").assertExists()
+        compose.onNodeWithText("You’re\nonline.").assertDoesNotExist()
+        compose.activity.window.decorView.captureRoboImage("build/ui-qa/partial-internet-state.png")
     }
     @Test fun invalid_paste_keeps_input_and_explains_error_in_dialog() {
         compose.waitForIdle();compose.onNodeWithText("Profiles").performClick();compose.waitForIdle()
