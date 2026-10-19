@@ -82,31 +82,7 @@ class TunnelService : VpnService(), CommandServerHandler {
             val adapter = NativePlatform(this).also { platform = it; it.start() }
             val command = CommandServer(this, adapter).also { server = it }
             command.start(); command.startOrReloadService(config, OverrideOptions())
-            val options=CommandClientOptions().apply { statusInterval=1_000_000_000L; addCommand(Libbox.CommandStatus); addCommand(Libbox.CommandGroup) }
-            telemetry=CommandClient(object : CommandClientHandler {
-                override fun connected() {} ; override fun disconnected(message:String?) {}
-                override fun clearLogs() {} ; override fun setDefaultLogLevel(level:Int) {}
-                override fun initializeClashMode(modes:StringIterator?,current:String?) {} ; override fun updateClashMode(mode:String?) {}
-                override fun writeLogs(logs:LogIterator?) {} ; override fun writeConnectionEvents(events:ConnectionEvents?) {}
-                override fun writeOutbounds(items:OutboundGroupItemIterator?) {}
-                override fun writeStatus(status:StatusMessage) {
-                    if(!closing && status.trafficAvailable) TunnelStatus.metrics(status.uplink,status.downlink,status.uplinkTotal,status.downlinkTotal)
-                }
-                override fun writeGroups(groups:OutboundGroupIterator) {
-                    val selected=mutableMapOf<String,String>(); val delays=mutableMapOf<String,Int>()
-                    while(groups.hasNext()) {
-                        val group=groups.next(); selected[group.tag]=group.selected
-                        val items=group.items
-                        while(items.hasNext()) { val item=items.next(); if(item.getURLTestDelay()>0) delays[item.tag]=item.getURLTestDelay() }
-                    }
-                    val route=selected["proxy"]
-                    if(!closing) {
-                        val chosen=if(route=="auto") selected["auto"] else route
-                        if(qualityRoute!=chosen) {qualityRoute=chosen;runCatching {healthExecutor.execute {routeQuality.reset()} }}
-                        TunnelStatus.group(chosen,delays)
-                    }
-                }
-            },options).also { it.connect() }
+            connectTelemetry(connectionEpoch)
             check(!closing)
             readProtection()
             TunnelStatus.update("ready"); showNotification("ready")
@@ -117,6 +93,33 @@ class TunnelService : VpnService(), CommandServerHandler {
             if(!closing) TunnelStatus.update("error"); shutdown()
         }
     }
+    private fun connectTelemetry(epoch:Long) {
+        val options=CommandClientOptions().apply { statusInterval=1_000_000_000L; addCommand(Libbox.CommandStatus); addCommand(Libbox.CommandGroup) }
+        telemetry=CommandClient(object : CommandClientHandler {
+            override fun connected() {} ; override fun disconnected(message:String?) {}
+            override fun clearLogs() {} ; override fun setDefaultLogLevel(level:Int) {}
+            override fun initializeClashMode(modes:StringIterator?,current:String?) {} ; override fun updateClashMode(mode:String?) {}
+            override fun writeLogs(logs:LogIterator?) {} ; override fun writeConnectionEvents(events:ConnectionEvents?) {}
+            override fun writeOutbounds(items:OutboundGroupItemIterator?) {}
+            override fun writeStatus(status:StatusMessage) {
+                if(!closing && connectionEpoch==epoch && status.trafficAvailable) TunnelStatus.metrics(status.uplink,status.downlink,status.uplinkTotal,status.downlinkTotal)
+            }
+            override fun writeGroups(groups:OutboundGroupIterator) {
+                val selected=mutableMapOf<String,String>(); val delays=mutableMapOf<String,Int>()
+                while(groups.hasNext()) {
+                    val group=groups.next(); selected[group.tag]=group.selected
+                    val items=group.items
+                    while(items.hasNext()) { val item=items.next(); if(item.getURLTestDelay()>0) delays[item.tag]=item.getURLTestDelay() }
+                }
+                val route=selected["proxy"]
+                if(!closing && connectionEpoch==epoch) {
+                    val chosen=if(route=="auto") selected["auto"] else route
+                    if(qualityRoute!=chosen) {qualityRoute=chosen;runCatching {healthExecutor.execute {routeQuality.reset()} }}
+                    TunnelStatus.group(chosen,delays)
+                }
+            }
+        },options).also { it.connect() }
+    }
     /** Serialized with start/stop. Invalid configs cannot replace the running engine. */
     private fun reloadProfile(config:String,isAutomatic:Boolean) {
         check(!closing && server!=null)
@@ -124,6 +127,7 @@ class TunnelService : VpnService(), CommandServerHandler {
         synchronized(this) {
             connectionEpoch++;networkEpoch++;healthGeneration++;health?.cancel(false)
             activeProbe?.disconnect();probes.forEach {it.disconnect()}
+            telemetry?.disconnect();telemetry=null
             automatic=isAutomatic;qualityRoute=null;routeQuality.reset();healthGate.networkChanged()
             retestBudget.healthy();lastExitCheck=-60_000L
             TunnelStatus.update("starting");showNotification("starting")
@@ -131,10 +135,10 @@ class TunnelService : VpnService(), CommandServerHandler {
         try {
             check(!closing)
             server!!.startOrReloadService(config,OverrideOptions())
-            check(!closing)
+            check(!closing);connectTelemetry(connectionEpoch)
             TunnelStatus.update("ready");showNotification("ready");scheduleHealth(0)
             if(automatic) requestRemeasure(connectionEpoch)
-        } catch(e:Exception) {TunnelStatus.update("error");shutdown();throw e}
+        } catch(e:Exception) {if(!closing) {TunnelStatus.update("error");shutdown()};throw e}
     }
     private fun readProtection() {
         if(!closing && Build.VERSION.SDK_INT>=29) runCatching { TunnelStatus.protection(isAlwaysOn,isLockdownEnabled) }
