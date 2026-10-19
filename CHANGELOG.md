@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Android connection and import follow-up
+
+- Add bounded UTF-8 document import for standard WireGuard `.conf` and profile files, with
+  dual-stack/multi-peer parsing, strict key/address/endpoint validation and no script execution.
+- Preserve WireGuard AllowedIPs/keepalive; explicitly retain RouteShield-owned DNS and app routing.
+- Keep the connection flower fixed; use neutral offline styling and semantic green/check feedback
+  only after successful HTTPS verification, plus short crossfades and expandable explanations.
+- Separate exit-IP lookups/native remeasurements from health polling; coalesce duplicate background
+  tasks and discard previous-network results during handover without dropping the TUN.
+- Shorten Persian/English microcopy and keep detailed safety/measurement explanations available.
+
+
 - Harden secret redaction, HTTPS subscription fetching and full-body download deadlines.
 - Remove the elevated firewall script-file race and resolve Windows tools from system paths.
 - Clean interrupted/preflight plaintext engine inputs on startup and teardown.

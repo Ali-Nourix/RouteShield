@@ -40,7 +40,13 @@ class NativePlatform(private val vpn: TunnelService) : PlatformInterface {
         } == true }
         val active = connectivity.activeNetwork.takeIf { it in networks }
         val previous = underlying
-        underlying = active ?: networks.sortedByDescending { connectivity.getNetworkCapabilities(it)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true }.firstOrNull()
+        underlying = active ?: networks.maxWithOrNull(compareBy<Network> {
+            connectivity.getNetworkCapabilities(it)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)==true
+        }.thenBy {
+            val caps=connectivity.getNetworkCapabilities(it)
+            when {caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)==true->3
+                caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)==true->2;else->1}
+        }.thenBy {it==previous})
         vpn.setUnderlyingNetworks(underlying?.let { arrayOf(it) })
         val name = underlying?.let { connectivity.getLinkProperties(it)?.interfaceName }
         val iface = name?.let { runCatching { JavaInterface.getByName(it) }.getOrNull() }

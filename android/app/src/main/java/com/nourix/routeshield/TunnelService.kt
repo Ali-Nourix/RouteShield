@@ -26,8 +26,10 @@ class TunnelService : VpnService(), CommandServerHandler {
     private var healthExecutor = Executors.newSingleThreadScheduledExecutor()
     private var probeExecutor = Executors.newFixedThreadPool(2)
     private val probes = java.util.concurrent.ConcurrentHashMap.newKeySet<HttpURLConnection>()
-    private var healthGeneration = 0L
+    @Volatile private var healthGeneration = 0L
+    private var maintenance = BackgroundWork()
     @Volatile private var connectionEpoch = 0L
+    @Volatile private var networkEpoch = 0L
     private var lastNotificationStage: String? = null
     @Volatile private var activeProbe: HttpURLConnection? = null
     private var server: CommandServer? = null
@@ -48,7 +50,7 @@ class TunnelService : VpnService(), CommandServerHandler {
         if (intent?.action == STOP) { shutdown(); return START_NOT_STICKY }
         synchronized(this) {
             if(closing && !shutdownComplete) return START_NOT_STICKY
-            if(closing) { closing=false; shutdownComplete=false; healthExecutor=Executors.newSingleThreadScheduledExecutor(); probeExecutor=Executors.newFixedThreadPool(2); lastNotificationStage=null }
+            if(closing) { closing=false; shutdownComplete=false; healthExecutor=Executors.newSingleThreadScheduledExecutor(); probeExecutor=Executors.newFixedThreadPool(2); maintenance=BackgroundWork(); lastNotificationStage=null }
         }
         if (prepare(this) != null) { TunnelStatus.update("permission"); stopSelf(); return START_NOT_STICKY }
         showNotification("starting") // foreground deadline, before native initialization
@@ -57,7 +59,7 @@ class TunnelService : VpnService(), CommandServerHandler {
     }
     private fun startTunnel() {
         TunnelStatus.update("starting")
-        connectionEpoch++
+        connectionEpoch++;networkEpoch++
         routeQuality.reset(); qualityRoute=null; retestBudget.healthy(); lastExitCheck=-60_000L
         try {
             val saved = ProfileStore(this).load()
@@ -105,7 +107,7 @@ class TunnelService : VpnService(), CommandServerHandler {
             readProtection()
             TunnelStatus.update("ready"); showNotification("ready")
             scheduleHealth(0) // Internet verification need not wait for every node measurement.
-            if(automatic) runCatching { Libbox.newStandaloneCommandClient().urlTest("auto") }
+            if(automatic) requestRemeasure(connectionEpoch)
         } catch (e: Exception) {
             // Do not put native errors/configs/keys into logcat or notifications.
             if(!closing) TunnelStatus.update("error"); shutdown()
@@ -114,79 +116,102 @@ class TunnelService : VpnService(), CommandServerHandler {
     private fun readProtection() {
         if(!closing && Build.VERSION.SDK_INT>=29) runCatching { TunnelStatus.protection(isAlwaysOn,isLockdownEnabled) }
     }
-    private fun checkHealth(expectedEpoch: Long) {
-        if (closing || connectionEpoch!=expectedEpoch) return
+    private fun current(epoch:Long,generation:Long)=!closing && connectionEpoch==epoch && healthGeneration==generation
+    private fun requestRemeasure(epoch:Long) {
+        maintenance.submit("retest") {
+            if(!closing && connectionEpoch==epoch && automatic) runCatching {Libbox.newStandaloneCommandClient().urlTest("auto")}
+        }
+    }
+    private fun checkHealth(expectedEpoch: Long, expectedGeneration:Long) {
+        if (!current(expectedEpoch,expectedGeneration)) return
+        val expectedNetwork=networkEpoch
         readProtection()
         try {
             val roundProbes = java.util.concurrent.ConcurrentHashMap.newKeySet<HttpURLConnection>()
             val endpoints = listOf("https://www.gstatic.com/generate_204", "https://cp.cloudflare.com/generate_204")
             val latency = try {
                 ParallelHealthProbe.measure(probeExecutor, endpoints.map { endpoint -> {
-                    if (closing || connectionEpoch!=expectedEpoch || Thread.currentThread().isInterrupted) null else {
+                    if (!current(expectedEpoch,expectedGeneration) || Thread.currentThread().isInterrupted) null else {
                         val probe = URL(endpoint).openConnection() as HttpURLConnection
                         probes.add(probe); roundProbes.add(probe)
                         try {
                             probe.connectTimeout=2500; probe.readTimeout=2500
                             probe.instanceFollowRedirects=false; probe.useCaches=false
                             val started=System.nanoTime()
-                            if (!closing && connectionEpoch==expectedEpoch && probe.responseCode==204) (System.nanoTime()-started)/1_000_000 else null
+                            if (current(expectedEpoch,expectedGeneration) && probe.responseCode==204) (System.nanoTime()-started)/1_000_000 else null
                         } finally { probes.remove(probe); roundProbes.remove(probe); probe.disconnect() }
                     }
                 } })
             } finally { roundProbes.forEach { it.disconnect(); probes.remove(it) }; roundProbes.clear() }
             check(latency != null)
-            if (!closing && connectionEpoch==expectedEpoch) {
+            synchronized(this) { if (current(expectedEpoch,expectedGeneration)) {
                 if(TunnelStatus.value.stage!="online") retestBudget.healthy()
                 healthGate.success(); TunnelStatus.update("online", latency); showNotification("online")
                 if(automatic && routeQuality.needsRemeasure(latency) && retestBudget.permit(android.os.SystemClock.elapsedRealtime()))
-                    runCatching { Libbox.newStandaloneCommandClient().urlTest("auto") }
-            }
+                    requestRemeasure(expectedEpoch)
+            } }
             val now=android.os.SystemClock.elapsedRealtime()
-            if(!closing && connectionEpoch==expectedEpoch && now-lastExitCheck>60_000) {
-                lastExitCheck=now
-                runCatching {
-                    val ip=URL("https://api.ipify.org?format=json").openConnection() as HttpURLConnection
-                    try {
-                        activeProbe=ip
-                        ip.connectTimeout=4000; ip.readTimeout=4000; ip.instanceFollowRedirects=false; ip.useCaches=false
-                        check(ip.responseCode==200)
-                        val body=ip.inputStream.use { stream -> val bytes=java.io.ByteArrayOutputStream(); val buffer=ByteArray(128); while(true) { val n=stream.read(buffer); if(n<0) break; check(bytes.size()+n<=256); bytes.write(buffer,0,n) }; String(bytes.toByteArray(),Charsets.UTF_8) }
-                        val address=org.json.JSONObject(body).getString("ip")
-                        if(!closing && connectionEpoch==expectedEpoch && address.length<=45 && address.all { it.isDigit() || it in ".:abcdefABCDEF" }) TunnelStatus.exit(address)
-                    } finally { ip.disconnect(); if(activeProbe===ip) activeProbe=null }
-                }
+            if(current(expectedEpoch,expectedGeneration) && now-lastExitCheck>60_000) {
+                if(maintenance.submit("exit-ip") {checkExitIp(expectedEpoch,expectedNetwork)}) lastExitCheck=now
             }
         } catch (e: Exception) {
-            if(closing || connectionEpoch!=expectedEpoch) return
+            if(!current(expectedEpoch,expectedGeneration)) return
+            synchronized(this) {
+            if(!current(expectedEpoch,expectedGeneration)) return
             val recover=healthGate.failureNeedsRecovery()
-            if (!closing && connectionEpoch==expectedEpoch) { val stage=if(recover) "waiting" else "degraded"; TunnelStatus.update(stage); showNotification(stage) }
+            if (current(expectedEpoch,expectedGeneration)) { val stage=if(recover) "waiting" else "degraded"; TunnelStatus.update(stage); showNotification(stage) }
             // Immediately remeasure the automatic group on an outage, then back off. Native
             // urltest keeps healthy existing sessions rather than unconditionally closing them.
-            if (!closing && connectionEpoch==expectedEpoch && recover && automatic && retestBudget.permit(android.os.SystemClock.elapsedRealtime())) {
-                runCatching { Libbox.newStandaloneCommandClient().urlTest("auto") }
+            if (current(expectedEpoch,expectedGeneration) && recover && automatic && retestBudget.permit(android.os.SystemClock.elapsedRealtime())) {
+                requestRemeasure(expectedEpoch)
+            }
             }
             // Keep the TUN up: loss of connectivity is not a request to send traffic directly.
-        } finally { if(connectionEpoch==expectedEpoch) activeProbe=null }
+        }
     }
-    @Synchronized private fun scheduleHealth(delayMs: Long) {
+    @Synchronized private fun scheduleHealth(delayMs: Long,resetNetwork:Boolean=false) {
         if(closing || healthExecutor.isShutdown) return
         health?.cancel(false)
         val generation=++healthGeneration
         val epoch=connectionEpoch
         health=healthExecutor.schedule({
-            if(closing) return@schedule
-            checkHealth(epoch)
+            if(!current(epoch,generation)) return@schedule
+            if(resetNetwork) {retestBudget.healthy();healthGate.networkChanged();routeQuality.reset();lastExitCheck=-60_000L}
+            checkHealth(epoch,generation)
             synchronized(this) {
                 if(!closing && healthGeneration==generation) scheduleHealth(HealthCadence.delay(TunnelStatus.value.stage))
             }
         },delayMs,TimeUnit.MILLISECONDS)
     }
     /** Called only when the chosen physical network changes, not on every capability callback. */
-    fun underlyingNetworkChanged() {
+    @Synchronized fun underlyingNetworkChanged() {
         if(closing || server==null || healthExecutor.isShutdown) return
-        runCatching { healthExecutor.execute {
-            if(!closing) { retestBudget.healthy(); healthGate.networkChanged(); routeQuality.reset(); scheduleHealth(300) }
-        } }
+        // Invalidate the previous network's result before disconnecting its I/O.
+        healthGeneration++;networkEpoch++
+        activeProbe?.disconnect();probes.forEach {it.disconnect()}
+        TunnelStatus.clearExit();TunnelStatus.update("ready");showNotification("ready")
+        scheduleHealth(300,resetNetwork=true)
+    }
+    private fun checkExitIp(epoch:Long,network:Long) {
+        if(!(!closing && connectionEpoch==epoch && networkEpoch==network)) return
+        runCatching {
+            val ip=URL("https://api.ipify.org?format=json").openConnection() as HttpURLConnection
+            try {
+                activeProbe=ip
+                if(!(!closing && connectionEpoch==epoch && networkEpoch==network)) return@runCatching
+                ip.connectTimeout=4000;ip.readTimeout=4000;ip.instanceFollowRedirects=false;ip.useCaches=false
+                check(ip.responseCode==200)
+                val body=ip.inputStream.use {stream->
+                    val bytes=java.io.ByteArrayOutputStream();val buffer=ByteArray(128)
+                    while(true) {val n=stream.read(buffer);if(n<0) break;check(bytes.size()+n<=256);bytes.write(buffer,0,n)}
+                    String(bytes.toByteArray(),Charsets.UTF_8)
+                }
+                val address=org.json.JSONObject(body).getString("ip")
+                synchronized(this) {
+                    if((!closing && connectionEpoch==epoch && networkEpoch==network) && address.length in 2..45 && address.all {it.isDigit() || it in ".:abcdefABCDEF"}) TunnelStatus.exit(address)
+                }
+            } finally {ip.disconnect();if(activeProbe===ip) activeProbe=null}
+        }
     }
     private fun showNotification(stage: String) {
         if(lastNotificationStage==stage) return
@@ -207,7 +232,7 @@ class TunnelService : VpnService(), CommandServerHandler {
         if(closing) return
         closing = true
         if(TunnelStatus.value.stage !in setOf("error","permission")) TunnelStatus.update("stopping")
-        connectionEpoch++; healthGeneration++; health?.cancel(true); activeProbe?.disconnect(); probes.forEach { it.disconnect() }; probes.clear(); healthExecutor.shutdownNow(); probeExecutor.shutdownNow()
+        connectionEpoch++; healthGeneration++; health?.cancel(true); activeProbe?.disconnect(); probes.forEach { it.disconnect() }; probes.clear(); healthExecutor.shutdownNow(); probeExecutor.shutdownNow(); maintenance.close()
         val descriptor=tun; tun=null; runCatching { descriptor?.close() }
         stopForeground(STOP_FOREGROUND_REMOVE)
         executor.execute {

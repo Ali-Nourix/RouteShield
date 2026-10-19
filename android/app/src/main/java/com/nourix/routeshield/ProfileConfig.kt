@@ -21,7 +21,7 @@ object ProfileConfig {
         val source = text.trim().removePrefix("\uFEFF")
         require(source.isNotEmpty()) { "The profile is empty" }
         val nodes = JSONArray()
-        if (source.startsWith("[Interface]", true)) return JSONArray().put(wireGuard(source))
+        if (WireGuardConfig.recognizes(source)) return JSONArray().put(validate(WireGuardConfig.parse(source)))
         if (source.startsWith("{")) {
             val root = JSONObject(source)
             val entries = root.optJSONArray("outbounds") ?: if (root.has("endpoints")) JSONArray() else JSONArray().put(root)
@@ -33,7 +33,7 @@ object ProfileConfig {
             }
         } else {
             val body = if (!source.contains("://")) runCatching { base64(source.filterNot(Char::isWhitespace)) }.getOrDefault(source) else source
-            if (body.trimStart().startsWith("{")) return import(body)
+            if (body.trimStart().startsWith("{") || WireGuardConfig.recognizes(body.trim().removePrefix("\uFEFF"))) return import(body)
             val seen = mutableSetOf<String>()
             body.lineSequence().map(String::trim).filter { it.isNotBlank() && !it.startsWith('#') }.forEach {
                 if (seen.add(it)) {
@@ -120,9 +120,7 @@ object ProfileConfig {
             require(node.optString("server").isNotBlank() && node.optString("server").length <= 253) { "Server is missing" }
             require(node.optInt("server_port") in 1..65535) { "Server port is invalid" }
         } else {
-            require((node.optJSONArray("address")?.length() ?: 0) > 0) { "WireGuard addresses are missing" }
-            require(node.optString("private_key").isNotBlank() && (node.optJSONArray("peers")?.length() ?: 0) > 0) { "WireGuard keys or peers are missing" }
-            node.put("system", false).put("name", "RouteShield-WG")
+            WireGuardConfig.validate(node)
         }
         require(node.optJSONObject("tls")?.optBoolean("insecure") != true) { "Insecure TLS is not accepted" }
         // Disallow imported chaining and inbound/API behavior. Routing policy belongs to this app.
@@ -137,34 +135,6 @@ object ProfileConfig {
         val library = saved.optJSONArray("library")
         return if (library != null && library.length() > 0) library.getJSONObject(saved.optInt("active", 0).coerceIn(0, library.length()-1)).getJSONArray("nodes")
             else saved.optJSONArray("nodes") ?: JSONArray()
-    }
-
-    private fun wireGuard(text: String): JSONObject {
-        val iface = mutableMapOf<String,String>(); val peers = mutableListOf<MutableMap<String,String>>()
-        var section: MutableMap<String,String>? = null
-        text.lineSequence().map { it.substringBefore('#').trim() }.filter(String::isNotEmpty).forEach { line ->
-            when {
-                line.equals("[Interface]", true) -> section = iface
-                line.equals("[Peer]", true) -> section = mutableMapOf<String,String>().also(peers::add)
-                '=' in line -> { val parts = line.split('=', limit=2); section?.set(parts[0].trim().lowercase(), parts[1].trim()) }
-            }
-        }
-        require(listOf("jc","jmin","jmax","s1","s2","h1","h2","h3","h4").none(iface::containsKey)) { "AmneziaWG requires a different mobile engine" }
-        val addresses = iface["address"]?.split(',')?.map(String::trim) ?: error("WireGuard addresses missing")
-        val peerArray = JSONArray()
-        peers.forEach { fields ->
-            val endpoint = URI("udp://" + (fields["endpoint"] ?: error("WireGuard endpoint missing")))
-            require(endpoint.port in 1..65535) { "WireGuard port invalid" }
-            val peer = JSONObject().put("address", endpoint.host.removePrefix("[").removeSuffix("]")).put("port", endpoint.port)
-                .put("public_key", fields["publickey"] ?: error("Peer public key missing"))
-                .put("allowed_ips", JSONArray((fields["allowedips"] ?: "0.0.0.0/0,::/0").split(',').map(String::trim)))
-            fields["presharedkey"]?.let { peer.put("pre_shared_key",it) }
-            fields["persistentkeepalive"]?.toIntOrNull()?.let { peer.put("persistent_keepalive_interval",it) }
-            peerArray.put(peer)
-        }
-        return validate(JSONObject().put("type","wireguard").put("tag","WireGuard").put("address",JSONArray(addresses))
-            .put("private_key",iface["privatekey"] ?: error("Private key missing")).put("peers",peerArray)
-            .put("mtu",iface["mtu"]?.toIntOrNull() ?: 1408))
     }
 
     fun selectionTag(nodeCount:Int, selected:Int):String {

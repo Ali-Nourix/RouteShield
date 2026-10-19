@@ -4,6 +4,23 @@ Native Kotlin/Compose Android client, Android 8+ (API 26), ARM64 physical phones
 x86_64 emulator builds. No Supabase, remote database, analytics or profile cloud sync.
 An existing working proxy/VPN endpoint is required; the app does not conjure a free server.
 
+## WireGuard and profile files
+
+Profiles → Import .conf or profile file uses Android's document picker (no broad storage permission).
+Standard WireGuard configs can also be pasted. UTF-8 input is bounded to 5 MB; private/public/PSK
+keys, literal CIDRs, endpoints, MTU and keepalive are validated before encrypted local persistence.
+Commented/BOM configs, repeated address/AllowedIPs lines, IPv6 endpoints and multiple peers work.
+AllowedIPs and keepalive are preserved. DNS and per-app routing remain controlled by RouteShield
+settings, as explained before import; this is not an implementation of wg-quick host scripts.
+Unsupported directives, including PostUp/PreDown and AmneziaWG extensions, fail closed.
+
+The flower remains neutral while starting/verifying and turns semantic green with a check only
+on verified connectivity. Its outline never morphs. Slow IP metadata and native group tests run
+outside the health scheduler; handover invalidates stale results without deliberately dropping
+TUN capture. These are scheduling fixes, not a measured throughput/success-rate promise.
+
+See ../docs/android-wireguard-polish.md for references and mandatory real-device release gates.
+
 ## Reproducible build
 
 Install JDK 17, Android SDK platform/build tools 35; set ANDROID_HOME or local.properties.

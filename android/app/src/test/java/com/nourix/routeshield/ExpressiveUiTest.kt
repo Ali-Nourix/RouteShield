@@ -6,6 +6,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.assertIsEnabled
@@ -136,5 +138,46 @@ class ExpressiveUiTest {
         compose.waitForIdle();File("build/ui-qa").mkdirs()
         compose.activity.window.decorView.captureRoboImage("build/ui-qa/expressive-online-fixture-teal.png")
         compose.onNodeWithText("Disconnect").assertIsEnabled()
+        compose.runOnUiThread {
+            model.saved.put("theme","dark").put("language","fa")
+            compose.activity.setContent {ShieldApp(model,{}, {}, {})}
+        }
+        compose.waitForIdle()
+        compose.activity.window.decorView.captureRoboImage("build/ui-qa/expressive-online-dark-fa.png")
+        compose.onNodeWithText("قطع اتصال").assertIsEnabled()
+    }
+    @Test fun file_import_uses_system_picker_without_storage_permission() {
+        compose.waitForIdle();compose.onNodeWithText("Profiles").performClick();compose.waitForIdle()
+        compose.onNodeWithText("Import .conf or profile file").performClick();compose.waitForIdle()
+        val started=org.robolectric.Shadows.shadowOf(compose.activity).nextStartedActivityForResult
+        org.junit.Assert.assertNotNull(started)
+        org.junit.Assert.assertEquals(android.content.Intent.ACTION_OPEN_DOCUMENT,started.intent.action)
+        org.junit.Assert.assertEquals("*/*",started.intent.type)
+    }
+    @Test fun invalid_paste_keeps_input_and_explains_error_in_dialog() {
+        compose.waitForIdle();compose.onNodeWithText("Profiles").performClick();compose.waitForIdle()
+        // Freeze the blinking editable cursor / sheet motion while driving this host test.
+        // Explicit frames still apply edits and all final UI/error assertions remain active.
+        compose.mainClock.autoAdvance=false
+        compose.onNodeWithText("Import profiles").performClick()
+        compose.mainClock.advanceTimeBy(1000);compose.waitForIdle()
+        val field=compose.onNodeWithText("Link or config")
+        field.performTextInput("not-a-config")
+        compose.mainClock.advanceTimeBy(300);compose.waitForIdle()
+        compose.onNodeWithText("Import",useUnmergedTree=true).performClick()
+        val model=androidx.lifecycle.ViewModelProvider(compose.activity)[ShieldModel::class.java]
+        compose.waitUntil(5_000) {
+            compose.mainClock.advanceTimeByFrame()
+            // waitUntil sleeps on the host; runOnIdle also drains Android main-handler
+            // work, including Dispatchers.IO returning to viewModelScope.
+            compose.runOnIdle { !model.busy }
+        }
+        compose.mainClock.advanceTimeBy(300);compose.waitForIdle()
+        compose.onNodeWithText("Could not import. Check the config, keys, or HTTPS subscription.").assertExists()
+        field.assertTextContains("not-a-config")
+        File("build/ui-qa").mkdirs()
+        compose.onNodeWithTag("profile-import-sheet").captureRoboImage("build/ui-qa/import-error-retains-input.png")
+        compose.onNodeWithText("Cancel").performClick()
+        compose.mainClock.advanceTimeBy(1000);compose.mainClock.autoAdvance=true
     }
 }

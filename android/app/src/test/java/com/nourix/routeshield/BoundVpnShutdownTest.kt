@@ -30,8 +30,21 @@ class BoundVpnShutdownTest {
         val controller=Robolectric.buildService(TunnelService::class.java).create();val service=controller.get()
         val epoch=TunnelService::class.java.getDeclaredField("connectionEpoch").apply {isAccessible=true}
         epoch.setLong(service,2L);TunnelStatus.update("ready")
-        TunnelService::class.java.getDeclaredMethod("checkHealth",Long::class.javaPrimitiveType).apply {isAccessible=true}.invoke(service,1L)
+        TunnelService::class.java.getDeclaredMethod("checkHealth",Long::class.javaPrimitiveType,Long::class.javaPrimitiveType).apply {isAccessible=true}.invoke(service,1L,0L)
         assertEquals("ready",TunnelStatus.value.stage)
+        controller.destroy()
+    }
+    @Test fun previous_network_round_and_exit_lookup_cannot_publish_stale_results() {
+        val controller=Robolectric.buildService(TunnelService::class.java).create();val service=controller.get()
+        fun field(name:String,value:Long) {TunnelService::class.java.getDeclaredField(name).apply {isAccessible=true}.setLong(service,value)}
+        field("connectionEpoch",2L);field("healthGeneration",3L);field("networkEpoch",2L)
+        TunnelStatus.update("ready");TunnelStatus.exit("203.0.113.2")
+        TunnelService::class.java.getDeclaredMethod("checkHealth",Long::class.javaPrimitiveType,Long::class.javaPrimitiveType)
+            .apply {isAccessible=true}.invoke(service,2L,2L)
+        TunnelService::class.java.getDeclaredMethod("checkExitIp",Long::class.javaPrimitiveType,Long::class.javaPrimitiveType)
+            .apply {isAccessible=true}.invoke(service,2L,1L)
+        assertEquals("ready",TunnelStatus.value.stage);assertEquals("203.0.113.2",TunnelStatus.value.exitIp)
+        TunnelStatus.clearExit();assertNull(TunnelStatus.value.exitIp)
         controller.destroy()
     }
 }
