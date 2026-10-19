@@ -241,8 +241,8 @@ class TunnelService : VpnService(), CommandServerHandler {
     private fun checkExitIp(epoch:Long,network:Long) {
         if(!(!closing && connectionEpoch==epoch && networkEpoch==network)) return
         runCatching {
-            val network=VpnHealthNetwork.find(this) ?: return@runCatching
-            val ip=network.openConnection(URL("https://api.ipify.org?format=json")) as HttpURLConnection
+            val vpnNetwork=VpnHealthNetwork.find(this) ?: return@runCatching
+            val ip=vpnNetwork.openConnection(URL("https://api.ipify.org?format=json")) as HttpURLConnection
             try {
                 activeProbe=ip
                 if(!(!closing && connectionEpoch==epoch && networkEpoch==network)) return@runCatching
