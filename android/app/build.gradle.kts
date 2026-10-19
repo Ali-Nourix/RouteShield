@@ -18,6 +18,8 @@ android {
         targetSdk = 35
         versionCode = ciVersionCode
         versionName = "0.2.0-preview"
+        val sourceCommit=System.getenv("GITHUB_SHA")?.takeIf {it.matches(Regex("[0-9a-f]{40}"))}?.take(12) ?: "local"
+        buildConfigField("String","SOURCE_COMMIT","\"$sourceCommit\"")
     }
     splits { abi { isEnable = true; reset(); include("arm64-v8a", "x86_64"); isUniversalApk = false } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

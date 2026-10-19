@@ -3,7 +3,7 @@ import java.util.concurrent.CopyOnWriteArraySet
 
 data class TunnelSnapshot(val stage:String="idle", val latencyMs:Long?=null, val up:Long?=null, val down:Long?=null,
     val totalUp:Long?=null, val totalDown:Long?=null, val exitIp:String?=null, val selected:String?=null,
-    val delays:Map<String,Int> = emptyMap(), val alwaysOn:Boolean?=null, val lockdown:Boolean?=null, val latencyHistory:List<Long?> = emptyList()) {
+    val delays:Map<String,Int> = emptyMap(), val httpsChecks:Int?=null, val dnsVerified:Boolean?=null, val alwaysOn:Boolean?=null, val lockdown:Boolean?=null, val latencyHistory:List<Long?> = emptyList()) {
     val running get()=stage in setOf("starting","ready","online","waiting","degraded","stopping")
 }
 object TunnelStatus {
@@ -18,7 +18,11 @@ object TunnelStatus {
             stage in setOf("waiting","degraded")->(value.latencyHistory+listOf<Long?>(null)).takeLast(12)
             else->value.latencyHistory
         }
-        value=if(stage=="idle") TunnelSnapshot() else value.copy(stage=stage,latencyMs=latency,latencyHistory=history)
+        value=when(stage) {
+            "idle"->TunnelSnapshot()
+            "starting"->TunnelSnapshot(stage="starting",alwaysOn=value.alwaysOn,lockdown=value.lockdown)
+            else->value.copy(stage=stage,latencyMs=latency,latencyHistory=history)
+        }
         listeners.forEach { it(value) }
     }
     @Synchronized fun protection(alwaysOn:Boolean,lockdown:Boolean) {
@@ -28,6 +32,9 @@ object TunnelStatus {
         value=value.copy(up=up,down=down,totalUp=totalUp,totalDown=totalDown); listeners.forEach { it(value) }
     }
     @Synchronized fun group(selected:String?,delays:Map<String,Int>) { value=value.copy(selected=selected,delays=delays); listeners.forEach { it(value) } }
+    @Synchronized fun checks(https:Int,dns:Boolean) {
+        require(https in 0..2);value=value.copy(httpsChecks=https,dnsVerified=dns);listeners.forEach {it(value)}
+    }
     @Synchronized fun clearExit() {value=value.copy(exitIp=null);listeners.forEach {it(value)}}
     @Synchronized fun exit(ip:String) { value=value.copy(exitIp=ip); listeners.forEach { it(value) } }
 }

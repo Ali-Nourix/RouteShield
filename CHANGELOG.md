@@ -1,5 +1,12 @@
 # Changelog
 
+## Android connectivity and subscription correction
+
+- Verify both independent HTTPS endpoints and VPN-bound DNS before showing online; no physical-network health fallback. Partial access is shown explicitly and diagnostics include safe check counts and build commit.
+- Replace horizontal profile chips with a subscription picker, searchable server list, explicit live-switch confirmation and serialized native profile reload. Preserve each profile’s chosen server.
+- Always sort home picker and profile servers by measured RTT, preserving selector identity; unknown/failed results are last.
+- Real-device DNS, multi-app traffic, live profile switching and network-handover validation remain required.
+
 ## Unreleased
 
 ### Android connection and import follow-up

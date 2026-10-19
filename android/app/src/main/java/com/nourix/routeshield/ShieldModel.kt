@@ -71,19 +71,36 @@ class ShieldModel(application: Application) : AndroidViewModel(application) {
         item.put("nodes",nodes).put("usage",result.usage).put("updated",System.currentTimeMillis()); data.put("selected",0)
         store.save(data); data
     }
-    fun select(group:Int, node:Int=0) = io {
-        val data=JSONObject(saved.toString())
-        require(group in 0 until data.getJSONArray("library").length())
-        val nodes=data.getJSONArray("library").getJSONObject(group).getJSONArray("nodes")
+    fun selectGroup(group:Int,onSelected:()->Unit={}) {
+        val library=saved.optJSONArray("library") ?: return
+        if(group !in 0 until library.length()) return
+        val item=library.getJSONObject(group)
+        select(group,item.optInt("selected",0).coerceIn(0,item.getJSONArray("nodes").length()),onSelected)
+    }
+    fun select(group:Int,node:Int=0,onSelected:()->Unit={}) = io(R.string.switch_error,onSelected) {
+        val previous=JSONObject(saved.toString());val data=JSONObject(saved.toString())
+        val library=data.getJSONArray("library")
+        require(group in 0 until library.length())
+        val nodes=library.getJSONObject(group).getJSONArray("nodes")
         val tag=ProfileConfig.selectionTag(nodes.length(),node)
+        val switching=group!=data.optInt("active",0)
+        val previousGroup=data.optInt("active",0)
+        if(previousGroup in 0 until library.length()) library.getJSONObject(previousGroup).put("selected",data.optInt("selected",0))
+        data.put("active",group).put("selected",node);library.getJSONObject(group).put("selected",node)
         if(tunnel.running) {
-            require(group==data.optInt("active",0) && tunnel.stage in setOf("ready","online","waiting","degraded"))
-            Libbox.newStandaloneCommandClient().selectOutbound("proxy",tag)
-            TunnelService.selectionChanged(node==0 && nodes.length()>1)
-            if(tag=="auto") runCatching { Libbox.newStandaloneCommandClient().urlTest("auto") }
-            event("Changed active route without restarting VPN")
-        }
-        data.put("active",group).put("selected",node); store.save(data); data
+            require(tunnel.stage in setOf("ready","online","waiting","degraded"))
+            if(switching) {
+                val config=ProfileConfig.runtime(nodes,node,data)
+                store.save(data)
+                try {TunnelService.replaceProfile(config,node==0 && nodes.length()>1)}
+                catch(e:Exception) {store.save(previous);throw e}
+            } else {
+                Libbox.newStandaloneCommandClient().selectOutbound("proxy",tag)
+                TunnelService.selectionChanged(node==0 && nodes.length()>1)
+                store.save(data)
+            }
+        } else store.save(data)
+        data
     }
     fun delete(index:Int) = io { val data=JSONObject(saved.toString()); data.getJSONArray("library").remove(index); data.put("active",0).put("selected",0); store.save(data); data }
     fun settings(update:JSONObject.()->Unit) = io { val data=JSONObject(saved.toString()).apply(update); store.save(data); data }
@@ -94,7 +111,7 @@ class ShieldModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { runCatching { withContext(Dispatchers.IO) { Libbox.newStandaloneCommandClient().urlTest("auto") } }
             .onSuccess { event("Requested native node measurements") }.onFailure { message="Node test requires an active automatic group." } }
     }
-    fun diagnostics():String = "RouteShield Android ${BuildConfig.VERSION_NAME}\nVariant: ${BuildConfig.BUILD_TYPE}\nState: ${tunnel.stage}\n" +
-        "Library groups: ${saved.optJSONArray("library")?.length() ?: 0}\nNo profiles, subscription URLs, keys, destinations or request bodies included.\n"+events.joinToString("\n")
+    fun diagnostics():String = "RouteShield Android ${BuildConfig.VERSION_NAME}\nVariant: ${BuildConfig.BUILD_TYPE}\nCommit: ${BuildConfig.SOURCE_COMMIT}\nState: ${tunnel.stage}\n" +
+        "Library groups: ${saved.optJSONArray("library")?.length() ?: 0}\nHTTPS checks: ${tunnel.httpsChecks ?: "unknown"}/2\nDNS verified: ${tunnel.dnsVerified ?: "unknown"}\nApp routing: ${saved.optString("mode","all")}\nNo profiles, subscription URLs, keys, destinations or request bodies included.\n"+events.joinToString("\n")
     override fun onCleared() { TunnelStatus.listeners.remove(observer); super.onCleared() }
 }

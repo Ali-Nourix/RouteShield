@@ -113,7 +113,7 @@
 <string name="kill_detail">در تنظیمات اندروید، VPN همیشه‌روشن و مسدودسازی اتصال بدون VPN را فعال کن؛ حتی با توقف برنامه هم محافظت می‌کند. اپ‌های مستثنا ممکن است مسدود شوند. قطع عمدی اتصال هم ممکن است تا خاموش‌کردن قفل سیستم اینترنت را مسدود نگه دارد.</string>
 <string name="kill_setup">تنظیم کیل‌سوییچ سیستم</string>
 <string name="catalog_coverage">اپ‌های نصب‌شدهٔ شناخته‌شده: %1$d · فهرست آفلاین: %2$d شناسه. اپ‌های ناشناخته با VPN می‌مانند.</string>
-<string name="degraded">در حال بررسی کیفیت مسیر…</string>
+<string name="degraded">اتصال محدود</string>
 <string name="prefer_stability">اولویت پایداری در انتخاب خودکار</string>
 <string name="stability_detail">مسیر سالم با نوسان کم تأخیر حفظ می‌شود؛ افت مداوم کیفیت و قطعی دوباره بررسی می‌شود، بدون مسیر مستقیم جایگزین.</string>
 <string name="private_local">ذخیره روی همین دستگاه</string>
@@ -144,4 +144,19 @@
 <string name="imported_file">پروفایل اضافه شد. DNS و مسیریابی طبق تنظیمات روت‌شیلد است.</string>
 <string name="wireguard_info">جزئیات ورود WireGuard</string>
 <string name="wireguard_policy">فایل استاندارد ⁦.conf⁩ و متن کانفیگ WireGuard پشتیبانی می‌شود. DNS و مسیریابی برنامه‌ها از تنظیمات روت‌شیلد پیروی می‌کنند، نه فایل. AllowedIPs و keepalive حفظ می‌شوند. اسکریپت‌ها و تنظیمات AmneziaWG پشتیبانی نمی‌شوند.</string>
+<string name="choose_subscription">انتخاب اشتراک</string>
+<string name="subscription_count">%1$d پروفایل · برای تغییر بزن</string>
+<string name="search_subscriptions">جست‌وجوی اشتراک</string>
+<string name="search_servers">جست‌وجوی سرور</string>
+<string name="ping_order">کمترین پینگ اول · تست‌نشده‌ها آخر</string>
+<string name="switch_subscription">اشتراک عوض شود؟</string>
+<string name="switch_subscription_detail">VPN با این پروفایل دوباره وصل می‌شود و اتصال لحظه‌ای وقفه دارد. برای جلوگیری از ترافیک مستقیم حین تغییر، «مسدودسازی اتصال بدون VPN» اندروید را فعال کن.</string>
+<string name="switch_reconnect">تغییر و اتصال</string>
+<string name="switch_error">تغییر انجام نشد؛ پروفایل را بررسی کن و دوباره وصل شو.</string>
+<string name="internet_not_verified">دسترسی کامل تأیید نشد</string>
+<string name="internet_check_detail">تونل روشن است، اما DNS یا یکی از تست‌های HTTPS ناموفق بود. سرور دیگری را امتحان کن؛ روشن‌بودن تونل به معنی اینترنت سالم نیست.</string>
+<string name="limited_app_routing">فقط برنامه‌های انتخاب‌شده از VPN استفاده می‌کنند. اگر بقیه کار نمی‌کنند، بخش برنامه‌ها را بررسی کن.</string>
+<string name="https_check_result">تست HTTPS: %1$d از ۲</string>
+<string name="dns_check_pass">DNS: تأیید شد</string>
+<string name="dns_check_fail">DNS: ناموفق</string>
 </resources>
