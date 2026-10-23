@@ -1,3 +1,7 @@
+![RouteShield — project cover](docs/images/readme-cover-20261023.svg)
+
+<sub>AI-generated editorial cover; not an application screenshot.</sub>
+
 <div align="center">
 
 # RouteShield
@@ -16,6 +20,16 @@ RouteShield is a Windows VPN controller built around the official [sing-box](htt
 </div>
 
 ---
+
+## Start here
+
+| Your goal | Guide |
+| --- | --- |
+| Use the Windows app | [Install](#install) · [Routing features](#what-it-does) |
+| Add browser routing | [Browser extension](#browser-extension) · [Extension setup](extension/README.md) |
+| Build or review security | [Build from source](#build-from-source) · [Tests](#tests) · [Security policy](SECURITY.md) |
+
+Windows routing and the Android preview have different support boundaries. Read the engine and platform notes before choosing a setup.
 
 ## What it does
 
