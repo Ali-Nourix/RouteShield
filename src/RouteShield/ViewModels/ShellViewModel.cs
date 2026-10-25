@@ -1158,6 +1158,9 @@ public sealed class ShellViewModel : Observable
             SelectedProfile = working.First(profile => profile.Id == fastest.Value);
             SortByLatency = true;
             await SaveAsync();
+            run.Token.ThrowIfCancellationRequested();
+            // Selection can change while the settings write yields to the UI.
+            SelectedProfile = working.First(profile => profile.Id == fastest.Value);
             // Release the shared probe before starting the actual tunnel.
             _isFreeSearching = false;
             Raise(nameof(CanConnect));

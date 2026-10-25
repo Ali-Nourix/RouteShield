@@ -19,6 +19,17 @@ public class FreeConfigTests
     }
 
     [Fact]
+    public async Task All_sources_failing_returns_no_candidates_or_fallback()
+    {
+        var service = new FreeConfigService((_, _, _) =>
+            Task.FromException<SubscriptionFetch>(new HttpRequestException("offline")));
+        var result = await service.FetchAsync(null, CancellationToken.None);
+        Assert.Empty(result.Nodes);
+        Assert.Equal(FreeConfigService.Sources.Count, result.SourceErrors.Count);
+        Assert.Null(FreeConfigService.Fastest([]));
+    }
+
+    [Fact]
     public async Task Equivalent_links_across_sources_are_deduplicated_despite_different_labels()
     {
         var service = new FreeConfigService((_, _, _) => Task.FromResult(new SubscriptionFetch(
