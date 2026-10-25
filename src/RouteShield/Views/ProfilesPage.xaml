@@ -186,6 +186,9 @@
 
             <Grid>
                 <StackPanel Orientation="Horizontal">
+                    <Button Style="{StaticResource SecondaryButton}" Content="Free &amp; connect" Margin="0,0,8,0"
+                            Command="{Binding FreeConnectCommand}"
+                            ToolTip="Opt-in public GitHub configurations: test HTTPS latency and connect to the fastest working candidate" />
                     <Button Style="{StaticResource SecondaryButton}" Content="Test latency"
                             Command="{Binding TestLatencyCommand}"
                             Visibility="{Binding IsTestingLatency, Converter={StaticResource Hide}}" />
@@ -237,11 +240,38 @@
 
             <!-- ══ Library ══ -->
             <Grid>
-                <TextBlock Style="{StaticResource HelpText}" Margin="0,22,0,0" VerticalAlignment="Top"
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <ItemsControl ItemsSource="{Binding EmptySubscriptions}" Margin="0,12,0,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1" Padding="0,8">
+                                <DockPanel>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                        <Button Style="{StaticResource GhostButton}" Content="Refresh"
+                                                Command="{Binding DataContext.RefreshSubscriptionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Style="{StaticResource GhostButton}" Content="Edit"
+                                                Command="{Binding DataContext.EditSubscriptionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource RowLabel}" Text="{Binding Name}" />
+                                        <TextBlock Style="{StaticResource Caption}" Text="{Binding StatusText}"
+                                                   ToolTip="{Binding StatusDetails}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Grid.Row="1" Style="{StaticResource HelpText}" Margin="0,22,0,0" VerticalAlignment="Top"
                            Text="Nothing here yet. Add a subscription, import a file, or open the editor and paste a share link."
                            Visibility="{Binding Profiles.Count, Converter={StaticResource ShowIfEmpty}}" />
 
-                <ListBox Style="{StaticResource AppListBox}" Margin="0,0,0,0"
+                <ListBox Grid.Row="1" Style="{StaticResource AppListBox}" Margin="0,0,0,0"
                          ItemsSource="{Binding LibraryView}"
                          ItemTemplate="{StaticResource ProfileRow}"
                          SelectedItem="{Binding SelectedItem, Mode=TwoWay}"

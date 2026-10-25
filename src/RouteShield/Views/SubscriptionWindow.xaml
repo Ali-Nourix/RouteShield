@@ -10,12 +10,12 @@
         UseLayoutRounding="True">
 
     <Border Background="{DynamicResource BgBrush}" CornerRadius="{StaticResource RadiusLg}" Padding="28,26"
-            Effect="{DynamicResource ShadowLg}" Margin="24" MouseLeftButtonDown="OnDragWindow">
+            Effect="{DynamicResource ShadowLg}" Margin="24">
         <StackPanel>
             <TextBlock Style="{StaticResource Kicker}" Foreground="{DynamicResource AccentBrush}"
                        ui:Typo.Tracked="SUBSCRIPTION" />
             <TextBlock x:Name="TitleText" Margin="0,12,0,0" FontFamily="{StaticResource HeadingFont}" FontSize="26"
-                       Text="Add a subscription" />
+                       Text="Add a subscription" MouseLeftButtonDown="OnDragWindow" />
             <TextBlock Style="{StaticResource HelpText}" Margin="0,10,0,0"
                        Text="An HTTPS address that returns share links, plain or Base64. It is refreshed on demand and stored sealed with DPAPI." />
 
@@ -35,7 +35,7 @@
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Style="{StaticResource SecondaryButton}" Content="Cancel" Click="OnCancel" />
                     <Button x:Name="SaveButton" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0"
-                            Content="Save and refresh" Click="OnSave" />
+                            Content="Save and refresh" IsEnabled="False" IsDefault="True" Click="OnSave" />
                 </StackPanel>
             </Grid>
         </StackPanel>
