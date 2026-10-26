@@ -74,6 +74,8 @@ public partial class ShellWindow : Window, IUiHost
 
     // ══ IUiHost ══
 
+    public string? BackupPassword(bool creating) => BackupPasswordWindow.Prompt(this, creating);
+
     public Task AlertAsync(string kicker, string title, string body)
     {
         AlertWindow.ShowAlert(this, kicker, title, body);

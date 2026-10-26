@@ -4,20 +4,17 @@
              xmlns:ui="clr-namespace:RouteShield.Ui"
              x:Name="Header" Focusable="False">
     <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,14">
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <StackPanel VerticalAlignment="Bottom">
-                <TextBlock Style="{StaticResource Kicker}"
-                           Text="{Binding Kicker, ElementName=Header, Converter={StaticResource Tracked}}" />
-                <TextBlock Style="{StaticResource PageTitle}" Text="{Binding Title, ElementName=Header}" />
+        <StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <Border Width="44" Height="44" CornerRadius="10" Background="{DynamicResource SurfaceBrush}" Margin="0,4,16,0" VerticalAlignment="Center">
+                    <ui:Icon Kind="{Binding IconKind, ElementName=Header}" Width="24" Height="24" Foreground="{DynamicResource AccentTextBrush}" />
+                </Border>
+                <StackPanel>
+                    <TextBlock Style="{StaticResource Kicker}" Text="{Binding Kicker, ElementName=Header, Converter={StaticResource Tracked}}" />
+                    <TextBlock Style="{StaticResource PageTitle}" Text="{Binding Title, ElementName=Header}" TextWrapping="Wrap" />
+                </StackPanel>
             </StackPanel>
-
-            <ContentPresenter Grid.Column="1" VerticalAlignment="Bottom"
-                              Content="{Binding Actions, ElementName=Header}" />
-        </Grid>
+            <ContentPresenter Margin="0,16,0,0" HorizontalAlignment="Left" Content="{Binding Actions, ElementName=Header}" />
+        </StackPanel>
     </Border>
 </UserControl>

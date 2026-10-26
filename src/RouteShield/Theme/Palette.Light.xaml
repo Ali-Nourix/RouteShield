@@ -15,7 +15,7 @@
     <Color x:Key="BgColor">#F3F2F2</Color>
     <Color x:Key="SurfaceColor">#EAE9E9</Color>
     <Color x:Key="TextColor">#201E1D</Color>
-    <Color x:Key="AccentColor">#EC3013</Color>
+    <Color x:Key="AccentColor">#C62F1B</Color>
     <Color x:Key="Accent2Color">#E15B47</Color>
 
     <!-- Neutral ramp -->
@@ -24,7 +24,7 @@
     <Color x:Key="Neutral300Color">#D7D3D3</Color>
     <Color x:Key="Neutral400Color">#BAB6B6</Color>
     <Color x:Key="Neutral500Color">#9B9797</Color>
-    <Color x:Key="Neutral600Color">#7D7979</Color>
+    <Color x:Key="Neutral600Color">#6F6A68</Color>
     <Color x:Key="Neutral700Color">#605D5D</Color>
     <Color x:Key="Neutral800Color">#444141</Color>
     <Color x:Key="Neutral900Color">#2D2B2B</Color>
@@ -66,8 +66,8 @@
     <!-- Accent text reversed out of the ink card. -->
     <SolidColorBrush x:Key="AccentOnInkBrush" Color="{StaticResource Accent400Color}" />
     <!-- The primary button under the pointer, then pressed. -->
-    <SolidColorBrush x:Key="AccentDeepBrush" Color="{StaticResource Accent600Color}" />
-    <SolidColorBrush x:Key="AccentDeeperBrush" Color="{StaticResource Accent700Color}" />
+    <SolidColorBrush x:Key="AccentDeepBrush" Color="{StaticResource Accent700Color}" />
+    <SolidColorBrush x:Key="AccentDeeperBrush" Color="{StaticResource Accent800Color}" />
 
     <!-- Rules and states are ink at low opacity, so they read the same over paper and over a raised surface. -->
     <SolidColorBrush x:Key="DividerBrush" Color="{StaticResource TextColor}" Opacity="0.12" />
@@ -80,5 +80,9 @@
     <!-- Dialogs and popups sit on a soft dark shadow in both palettes. -->
     <DropShadowEffect x:Key="ShadowLg" BlurRadius="32" ShadowDepth="12" Direction="270"
                       Color="#2D2B2B" Opacity="0.22" />
+
+    <SolidColorBrush x:Key="SuccessBrush" Color="#257246" />
+    <SolidColorBrush x:Key="WarningBrush" Color="#86501A" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#AB271D" />
 
 </ResourceDictionary>

@@ -7,6 +7,20 @@
 - Always sort home picker and profile servers by measured RTT, preserving selector identity; unknown/failed results are last.
 - Real-device DNS, multi-app traffic, live profile switching and network-handover validation remain required.
 
+## 1.7.2 — Windows library, routing and design update
+
+- Add explicit clipboard batch import, SOCKS5/HTTP(S) proxy links, selected-node copy/export/testing,
+  owner-scoped deduplication, favorites and name/protocol/claimed-country/working filters.
+- Add strict measured Quick connect and a cross-provider fastest-of-all-saved-profiles group.
+- Add opt-in startup/scheduled subscription refresh with failure backoff and safe cancellation.
+- Add editable direct/proxy/block domain lists; preserve probe/browser routes and refuse unsupported WireSock rules.
+- Add portable password-encrypted library backup and validated merge restore without changing Windows security settings.
+- Add near-expiry/low-quota warnings, window-scoped keyboard shortcuts and original outline icons.
+- Refine page hierarchy, progressive tool disclosure, focus/contrast/target sizes, dark-mode password controls and busy-overlay cancellation.
+- Increment the actual Windows product/manifest/user-agent version from 1.7.1 to 1.7.2; add a version-bump/check helper.
+- Review three ideas from each of nine requested clients, recording shared/existing/deferred work explicitly in
+  `docs/client-feature-review-1.7.2.md`; this is not a claim of 27 independent ports or native Windows runtime validation.
+
 ## Unreleased
 
 ### Windows subscription fixes and opt-in Free mode

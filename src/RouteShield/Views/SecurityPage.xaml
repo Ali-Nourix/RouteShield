@@ -21,9 +21,9 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <views:PageHeader Kicker="PREFERENCES" Title="Security &amp; behaviour">
+        <views:PageHeader IconKind="Shield" Kicker="PREFERENCES" Title="Security &amp; behaviour">
             <views:PageHeader.Actions>
-                <TextBlock Style="{StaticResource Caption}" Text="Saved automatically" />
+                <TextBlock Style="{StaticResource Caption}" Text="Saved automatically · domain rules require Save" />
             </views:PageHeader.Actions>
         </views:PageHeader>
 
@@ -181,7 +181,7 @@
                 <Border Margin="0,26,0,0" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
                     <Grid>
                         <TextBlock Style="{StaticResource SectionTitle}" Text="Outbound adapter" />
-                        <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                        <Button Tag="Refresh" Style="{StaticResource GhostButton}" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                 Command="{Binding RefreshAdaptersCommand}" Content="Rescan" />
                     </Grid>
                 </Border>
@@ -269,9 +269,53 @@
                 <Grid Margin="0,12,0,0">
                     <TextBlock Style="{StaticResource HelpText}" VerticalAlignment="Center" MaxWidth="620" HorizontalAlignment="Left"
                                Text="Download browser add-ons separately from GitHub Releases. Firefox: use the XPI temporarily through about:debugging; permanent standard-Firefox installation requires Mozilla signing. Chrome: extract the Chrome ZIP into extensions/chrome, then chrome://extensions → Developer mode → Load unpacked." />
-                    <Button Style="{StaticResource SecondaryButton}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                    <Button Tag="Folder" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Right" VerticalAlignment="Center"
                             Command="{Binding OpenExtensionFolderCommand}" Content="Open extension folder" />
                 </Grid>
+                <Border Margin="0,26,0,0" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="Subscription updates" />
+                </Border>
+                <CheckBox Style="{StaticResource SettingRow}" Content="Refresh private subscriptions on startup"
+                          IsChecked="{Binding RefreshSubscriptionsOnStartup}" />
+                <TextBlock Text="Scheduled refresh interval in minutes (0 = off). Failed feeds retry no sooner than 5 minutes. The public Free pool is never fetched by this scheduler."
+                           Style="{StaticResource HelpText}" TextWrapping="Wrap" Margin="0,8" />
+                <ComboBox Width="160" HorizontalAlignment="Left" Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboItem}"
+                          ItemsSource="{Binding RefreshIntervalOptions}" SelectedItem="{Binding SubscriptionRefreshMinutes}" />
+
+                <Border Margin="0,26,0,0" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="Custom domain routes" />
+                </Border>
+                <TextBlock Text="One domain per line, including subdomains. Block wins over Proxy, then Direct. Direct explicitly bypasses the VPN. Pinned browser routes and the health probe retain their own route. Changes apply on the next connection, not silently to the current tunnel."
+                           Style="{StaticResource HelpText}" TextWrapping="Wrap" Margin="0,10" />
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,8,0">
+                        <TextBlock Text="Direct / bypass" Style="{StaticResource FieldLabel}" />
+                        <TextBox Text="{Binding DirectDomainText, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource AppTextBox}" Height="100"
+                                 AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Margin="0,8,0,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                        <TextBlock Text="Always proxy" Style="{StaticResource FieldLabel}" />
+                        <TextBox Text="{Binding ProxyDomainText, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource AppTextBox}" Height="100"
+                                 AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Margin="0,8,0,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Block" Style="{StaticResource FieldLabel}" />
+                        <TextBox Text="{Binding BlockedDomainText, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource AppTextBox}" Height="100"
+                                 AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Margin="0,8,0,0" />
+                    </StackPanel>
+                </Grid>
+                <Button Tag="Globe" Content="Save domain rules" Command="{Binding ApplyDomainsCommand}" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left" Margin="0,12,0,0" />
+
+                <Border Margin="0,26,0,0" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,9">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="Encrypted library backup" />
+                </Border>
+                <TextBlock Text="Portable password-encrypted backup of private subscriptions, manual profiles, favorites, browser pins and domain lists. Restore merges profiles without deleting the current library; domain rules must be reviewed and saved separately. The free pool, app paths, firewall and Windows startup settings are excluded."
+                           Style="{StaticResource HelpText}" TextWrapping="Wrap" Margin="0,10" />
+                <WrapPanel>
+                    <Button Tag="Lock" Content="Export encrypted backup" Command="{Binding ExportBackupCommand}" Style="{StaticResource SecondaryButton}" Margin="0,0,8,0" />
+                    <Button Tag="Download" Content="Restore encrypted backup" Command="{Binding RestoreBackupCommand}" Style="{StaticResource SecondaryButton}" />
+                </WrapPanel>
             </StackPanel>
         </ScrollViewer>
 
@@ -279,7 +323,7 @@
             <TextBlock Style="{StaticResource Caption}" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="700"
                        HorizontalAlignment="Left"
                        Text="Settings live in %LocalAppData%\RouteShield\settings.json — secrets sealed with DPAPI." />
-            <Button Style="{StaticResource SecondaryButton}" HorizontalAlignment="Right"
+            <Button Tag="Refresh" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Right"
                     Command="{Binding ResetSettingsCommand}" Content="Reset to defaults" />
         </Grid>
     </Grid>

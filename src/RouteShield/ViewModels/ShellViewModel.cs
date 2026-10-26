@@ -29,6 +29,8 @@ public interface IUiHost
 {
     Task AlertAsync(string kicker, string title, string body);
 
+    string? BackupPassword(bool creating);
+
     Task<bool> ConfirmAsync(string kicker, string title, string body, string confirmLabel);
 
     IReadOnlyList<RunningProcessItem>? PickRunningProcesses();
@@ -37,7 +39,7 @@ public interface IUiHost
     SubscriptionEdit? EditSubscription(VpnSubscription? existing);
 }
 
-public sealed class ShellViewModel : Observable
+public sealed partial class ShellViewModel : Observable
 {
     private readonly SettingsStore _store = new();
     private readonly SubscriptionService _subscriptions = new();
@@ -84,20 +86,20 @@ public sealed class ShellViewModel : Observable
         ReleaseKillSwitchCommand = new AsyncRelayCommand(ReleaseKillSwitchAsync);
         StopReconnectCommand = new AsyncRelayCommand(() => _tunnel.StopReconnectingAsync());
 
-        NewProfileCommand = new RelayCommand(NewProfile);
-        ImportProfileCommand = new AsyncRelayCommand(ImportProfileAsync);
+        NewProfileCommand = new RelayCommand(NewProfile, () => !IsTestingLatency);
+        ImportProfileCommand = new AsyncRelayCommand(ImportProfileAsync, () => !IsTestingLatency && !_shuttingDown);
         SaveProfileCommand = new AsyncRelayCommand(SaveProfileAsync, () => SelectedProfile is null || CanEditSelectedProfile);
-        DeleteProfileCommand = new AsyncRelayCommand(DeleteProfileAsync, () => CanEditSelectedProfile);
+        DeleteProfileCommand = new AsyncRelayCommand(DeleteProfileAsync, () => CanEditSelectedProfile && !IsTestingLatency);
         DetectFormatCommand = new RelayCommand(DetectFormat);
         ToggleEditorCommand = new RelayCommand(() => IsEditorOpen = !IsEditorOpen);
         RefreshAdaptersCommand = new RelayCommand(RefreshAdapters);
 
-        AddSubscriptionCommand = new AsyncRelayCommand(AddSubscriptionAsync);
+        AddSubscriptionCommand = new AsyncRelayCommand(AddSubscriptionAsync, () => !IsTestingLatency && !_shuttingDown);
         FreeConnectCommand = new AsyncRelayCommand(FreeConnectAsync,
             () => !IsTestingLatency && State is TunnelState.Disconnected or TunnelState.Failed);
-        EditSubscriptionCommand = new AsyncRelayCommand(EditSubscriptionAsync);
-        RefreshSubscriptionCommand = new AsyncRelayCommand(RefreshOneSubscriptionAsync);
-        RefreshSubscriptionsCommand = new AsyncRelayCommand(RefreshSubscriptionsAsync);
+        EditSubscriptionCommand = new AsyncRelayCommand(EditSubscriptionAsync, _ => !IsTestingLatency && !_shuttingDown);
+        RefreshSubscriptionCommand = new AsyncRelayCommand(RefreshOneSubscriptionAsync, _ => !IsTestingLatency && !_shuttingDown);
+        RefreshSubscriptionsCommand = new AsyncRelayCommand(RefreshSubscriptionsAsync, () => !IsTestingLatency && !_shuttingDown);
 
         TestLatencyCommand = new AsyncRelayCommand(TestLatencyAsync, () => !IsTestingLatency && Library.Count > 0);
         CancelLatencyCommand = new RelayCommand(() => _latencyRun?.Cancel(), () => IsTestingLatency);
@@ -128,12 +130,17 @@ public sealed class ShellViewModel : Observable
         LibraryView.IsLiveSorting = true;
         LibraryView.LiveSortingProperties.Add(nameof(ProfileItem.SortKey));
         ApplyLibrarySort();
+        InitializeLibraryTools();
 
         _tunnel.Changed += OnTunnelChanged;
         AppLog.EntryWritten += OnLogEntry;
 
         _clock = new DispatcherTimer(DispatcherPriority.Normal) { Interval = TimeSpan.FromSeconds(1) };
-        _clock.Tick += (_, _) => Raise(nameof(UptimeText));
+        _clock.Tick += async (_, _) =>
+        {
+            Raise(nameof(UptimeText));
+            await RefreshDueSubscriptionsAsync();
+        };
         _clock.Start();
     }
 
@@ -195,7 +202,7 @@ public sealed class ShellViewModel : Observable
 
     public bool IsKillSwitchHolding => _tunnel.KillSwitchArmed && State != TunnelState.Connected;
 
-    public bool CanConnect => !_isFreeSearching && SelectedProfile is not null && State is TunnelState.Disconnected or TunnelState.Failed;
+    public bool CanConnect => !_isFreeSearching && !_quickConnecting && SelectedProfile is not null && State is TunnelState.Disconnected or TunnelState.Failed;
 
     public string UptimeText => _tunnel.ConnectedAt is { } start
         ? (DateTimeOffset.Now - start).ToString(@"hh\:mm\:ss")
@@ -558,7 +565,7 @@ public sealed class ShellViewModel : Observable
         {
             // Clearing the library makes the list push null through this binding; that is
             // a side effect of the rebuild, not a choice, and must not unset the profile.
-            if (_rebuildingLibrary)
+            if (_rebuildingLibrary || _filterRefreshing)
             {
                 return;
             }
@@ -612,6 +619,7 @@ public sealed class ShellViewModel : Observable
             ValidateCommand.RaiseCanExecuteChanged();
             SaveProfileCommand.RaiseCanExecuteChanged();
             DeleteProfileCommand.RaiseCanExecuteChanged();
+            RaiseLibraryCommands();
             QueueSave();
         }
     }
@@ -619,7 +627,7 @@ public sealed class ShellViewModel : Observable
     public bool HasSelectedProfile => SelectedProfile is not null;
 
     /// <summary>Automatic entries have nothing to edit, pin or delete; they follow their subscription.</summary>
-    public bool CanEditSelectedProfile => SelectedProfile is { IsAutomatic: false };
+    public bool CanEditSelectedProfile => SelectedProfile is { IsAutomatic: false } && !IsTestingLatency;
 
     public string SelectedProfileLabel => SelectedProfile switch
     {
@@ -675,6 +683,8 @@ public sealed class ShellViewModel : Observable
                 TestLatencyCommand.RaiseCanExecuteChanged();
                 FreeConnectCommand.RaiseCanExecuteChanged();
                 CancelLatencyCommand.RaiseCanExecuteChanged();
+                Raise(nameof(CanEditSelectedProfile));
+                RaiseLibraryCommands();
             }
         }
     }
@@ -826,6 +836,7 @@ public sealed class ShellViewModel : Observable
     {
         _settings = await _store.LoadAsync();
         _loaded = true;
+        LoadLibrarySettings();
 
         foreach (var profile in _settings.Profiles)
         {
@@ -872,6 +883,8 @@ public sealed class ShellViewModel : Observable
             AppLog.Write(LogCategory.Core, $"sing-box.exe was not found at {CoreProcessService.CorePath}");
         }
 
+        if (_settings.RefreshSubscriptionsOnStartup) await RefreshDueSubscriptionsAsync(startup: true);
+
         if (_settings.AutoConnect && CanConnect)
         {
             await ConnectAsync();
@@ -880,8 +893,13 @@ public sealed class ShellViewModel : Observable
 
     public async Task ShutdownAsync()
     {
+        _shuttingDown = true;
         _clock.Stop();
+        _libraryShutdown.Cancel();
         _latencyRun?.Cancel();
+        // Wait for any in-flight body read before disposing the shared downloader.
+        await _subscriptionRefreshGate.WaitAsync();
+        _subscriptionRefreshGate.Release();
         _bridge.Dispose();
         await _tunnel.DisposeAsync();
         _subscriptions.Dispose();
@@ -1100,7 +1118,8 @@ public sealed class ShellViewModel : Observable
             "RouteShield will download public GitHub share links, test HTTPS through up to 100 candidates, " +
             "and connect to the lowest measured latency. Availability and privacy are not guaranteed.", "Test and connect")) return;
 
-        using var run = new CancellationTokenSource(TimeSpan.FromMinutes(4));
+        using var run = CancellationTokenSource.CreateLinkedTokenSource(_libraryShutdown.Token);
+        run.CancelAfter(TimeSpan.FromMinutes(4));
         _isFreeSearching = true;
         Raise(nameof(CanConnect));
         ConnectCommand.RaiseCanExecuteChanged();
@@ -1171,6 +1190,7 @@ public sealed class ShellViewModel : Observable
         }
         catch (OperationCanceledException)
         {
+            if (_shuttingDown) return;
             await _host.AlertAsync("Free mode", "Free server search stopped",
                 "The search was cancelled or reached its four-minute limit. No untested server was connected.");
         }
@@ -1352,16 +1372,19 @@ public sealed class ShellViewModel : Observable
 
     private async Task RefreshSubscriptionAsync(VpnSubscription subscription)
     {
-        if (subscription.Id == FreeConfigService.PoolId)
+        if (subscription.Id == FreeConfigService.PoolId || _shuttingDown)
         {
-            // Do not replace tested nodes with an untested feed during Refresh all.
             return;
         }
+        await _subscriptionRefreshGate.WaitAsync();
         try
         {
             // The address a subscription lives at is often blocked by the network the tunnel is
             // there to get around, so it is fetched through the tunnel whenever one is up.
-            var fetch = await _subscriptions.FetchAsync(subscription.Url, _tunnel.ProxyUri);
+            if (_shuttingDown || !Subscriptions.Contains(subscription)) return;
+            var requestedUrl = subscription.Url;
+            var fetch = await _subscriptions.FetchAsync(requestedUrl, _tunnel.ProxyUri, _libraryShutdown.Token);
+            if (!Subscriptions.Contains(subscription) || subscription.Url != requestedUrl) return;
             var import = SubscriptionImport.From(fetch.Entries);
 
             subscription.Notes = [.. import.Notes];
@@ -1398,11 +1421,13 @@ public sealed class ShellViewModel : Observable
                 (import.Unreadable > 0 ? $", {import.Unreadable} unreadable entr{(import.Unreadable == 1 ? "y" : "ies")} skipped" : string.Empty) +
                 (subscription.UsageText is { Length: > 0 } usage ? $" · {usage}" : string.Empty));
         }
-        catch (Exception exception) when (IsExpected(exception) || exception is HttpRequestException)
+        catch (OperationCanceledException) when (_libraryShutdown.IsCancellationRequested) { }
+        catch (Exception exception) when (IsExpected(exception) || exception is HttpRequestException or System.Text.Json.JsonException)
         {
             subscription.LastError = exception.Message;
             AppLog.Write(LogCategory.Subscription, $"\"{subscription.Name}\" refresh failed — {exception.Message}");
         }
+        finally { _subscriptionRefreshGate.Release(); }
     }
 
     /// <summary>
@@ -1492,19 +1517,19 @@ public sealed class ShellViewModel : Observable
         Raise(nameof(EngineAvailability));
     }
 
-    private bool IsSelectable(VpnProfile profile) => Profiles.Contains(profile) || _autoProfiles.ContainsValue(profile);
+    private bool IsSelectable(VpnProfile profile) => Profiles.Contains(profile) || _autoProfiles.ContainsValue(profile) || ReferenceEquals(_globalAutomatic, profile);
 
     private VpnProfile? FindSelectable(Guid? id) => id is null
         ? null
-        : Profiles.FirstOrDefault(profile => profile.Id == id) ?? _autoProfiles.Values.FirstOrDefault(profile => profile.Id == id);
+        : Profiles.FirstOrDefault(profile => profile.Id == id) ?? _autoProfiles.Values.FirstOrDefault(profile => profile.Id == id) ?? (_globalAutomatic?.Id == id ? _globalAutomatic : null);
 
     private string AutomaticDescription(VpnProfile automatic)
     {
-        var nodes = Profiles.Count(profile => profile.SubscriptionId == automatic.SubscriptionId);
+        var nodes = Profiles.Count(profile => automatic.IsGlobalAutomatic || profile.SubscriptionId == automatic.SubscriptionId);
         return $"""
             Automatic selection has no configuration of its own.
 
-            RouteShield hands the core every node of this subscription ({nodes} at the moment).
+            RouteShield hands the core every node of this group ({nodes} at the moment).
             The core measures all of them, carries traffic over the fastest, re-tests every
             {RuntimeConfigBuilder.GroupTestInterval.TrimEnd('m')} minutes, and moves to the next node when the
             chosen one stops answering — without dropping the tunnel.
@@ -1571,6 +1596,13 @@ public sealed class ShellViewModel : Observable
                 ConnectTargets.Add(automatic);
             }
 
+            if (Profiles.Count >= 2)
+            {
+                _globalAutomatic ??= new VpnProfile { Id = VpnProfile.GlobalAutomaticId, Name = "Fastest of all saved profiles", Format = VpnProfile.AutomaticFormat };
+                Library.Add(new ProfileItem(_globalAutomatic, LibrarySection.Manual, Profiles.Count));
+                ConnectTargets.Insert(0, _globalAutomatic);
+            }
+            else _globalAutomatic = null;
             foreach (var profile in Profiles)
             {
                 ConnectTargets.Add(profile);
@@ -1581,7 +1613,7 @@ public sealed class ShellViewModel : Observable
             _rebuildingLibrary = false;
         }
 
-        if (SelectedProfile is { IsAutomatic: true } selected && !_autoProfiles.ContainsValue(selected))
+        if (SelectedProfile is { IsAutomatic: true } selected && !IsSelectable(selected))
         {
             SelectedProfile = Profiles.FirstOrDefault(profile => profile.SubscriptionId == selected.SubscriptionId) ?? Profiles.FirstOrDefault();
         }
@@ -1596,6 +1628,7 @@ public sealed class ShellViewModel : Observable
         Raise(nameof(StatusDetail));
         TestLatencyCommand.RaiseCanExecuteChanged();
         FreeConnectCommand.RaiseCanExecuteChanged();
+        RefreshLibraryTools();
     }
 
     private LibrarySection SectionFor(VpnProfile profile)
@@ -1638,9 +1671,11 @@ public sealed class ShellViewModel : Observable
         }
     }
 
-    private async Task TestLatencyAsync()
+    private Task TestLatencyAsync() => TestItemsAsync(Library.Where(item => !item.Profile.IsAutomatic).ToList());
+
+    private async Task TestItemsAsync(IReadOnlyList<ProfileItem> items)
     {
-        var items = Library.Where(item => !item.Profile.IsAutomatic).ToList();
+        _lastProbeCancelled = false;
         if (items.Count == 0)
         {
             return;
@@ -1673,6 +1708,7 @@ public sealed class ShellViewModel : Observable
         }
         catch (OperationCanceledException)
         {
+            _lastProbeCancelled = true;
             foreach (var item in byId.Values.Where(item => item.LatencyState == LatencyState.Testing))
             {
                 item.Apply(new LatencyResult(item.Profile.Id, null, "Cancelled"));
@@ -1680,6 +1716,7 @@ public sealed class ShellViewModel : Observable
         }
         catch (Exception exception) when (IsExpected(exception))
         {
+            _lastProbeCancelled = true;
             foreach (var item in byId.Values.Where(item => item.LatencyState == LatencyState.Testing))
             {
                 item.Apply(new LatencyResult(item.Profile.Id, null, "Failed"));
@@ -1696,6 +1733,7 @@ public sealed class ShellViewModel : Observable
             }
 
             run.Dispose();
+            RefreshLibraryFilter();
         }
     }
 
@@ -1822,6 +1860,10 @@ public sealed class ShellViewModel : Observable
         _settings.AllowLan = defaults.AllowLan;
         _settings.AutoReconnect = defaults.AutoReconnect;
         _settings.AutoConnect = defaults.AutoConnect;
+        _settings.RefreshSubscriptionsOnStartup = false;
+        _settings.SubscriptionRefreshMinutes = 0;
+        _settings.DirectDomains = []; _settings.ProxyDomains = []; _settings.BlockedDomains = [];
+        LoadLibrarySettings();
         _settings.CloseToTray = defaults.CloseToTray;
         _settings.TlsFragment = defaults.TlsFragment;
         _settings.BlockQuic = defaults.BlockQuic;
@@ -1865,6 +1907,7 @@ public sealed class ShellViewModel : Observable
 
             ConnectCommand.RaiseCanExecuteChanged();
             FreeConnectCommand.RaiseCanExecuteChanged();
+            RaiseLibraryCommands();
         });
     }
 

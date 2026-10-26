@@ -70,3 +70,27 @@ is reported by the existing connection UI; end-to-end availability cannot be gua
 Set `ROUTESHIELD_SINGBOX` to the packaged-version sing-box binary to include engine
 validation. The existing Windows GitHub Actions job builds the WPF package and runs
 these tests on pull requests. Native WPF input/TUN behavior still needs the checklist above.
+
+## 1.7.2 library, design and automation checks
+
+- Test name/protocol/claimed-flag-country/favorites/working-only filters and the explicit empty state.
+  A hidden selection must not silently change to another node. Quick connect must refuse no matches,
+  cancellation, failed measurements and filter changes during a test.
+- Paste multiple plain/Base64 links. Verify confirmation, 500-entry cap, duplicate handling, malformed
+  entries, busy clipboard errors, HTTP/SOCKS5 credentials and IPv6. Copy/export require credential warnings.
+- Deduplicate same-owner nodes; check selected identity, pins and favorites survive and other providers
+  are not merged. Editing/import/refresh should be unavailable while a latency test owns its snapshot.
+- Export a portable encrypted backup, open it on another Windows account/computer, and merge it twice.
+  Verify wrong password, corruption, invalid structure and oversize refusal do not modify the library.
+  Review restored domain drafts; they must not become active without Save domain rules.
+- Test direct/proxy/block precedence, invalid domain input, international domains, retained browser routes,
+  and WireSock's explicit refusal when custom lists exist. Reconnect to apply changed lists.
+- Enable startup/periodic refresh, simulate blocked/empty feeds and shutdown mid-download. Check old
+  nodes remain, no tight retry loop, manual/auto requests serialize and the Free pool is excluded.
+- Test all saved/provider automatic groups, selected-node tests, and all four focused-window shortcuts.
+- Check the visible version says 1.7.2, manifest and package metadata agree, and the next update bumps the
+  product version with `scripts/bump-version.py`, not just the CI artifact/run counter.
+- Inspect all five native pages, editor open/closed, empty/error states and dialogs at 1120×720 and
+  1320×840, 100/150/200% DPI, light/dark/system themes. Check no clipping/overlap, vector icons remain
+  sharp, text labels/accessibility names remain available, keyboard focus is visible, and Stop testing
+  works even from the busy overlay. HTML references cannot substitute for these native checks.

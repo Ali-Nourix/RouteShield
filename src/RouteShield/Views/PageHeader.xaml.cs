@@ -15,6 +15,10 @@ public partial class PageHeader : UserControl
     public static readonly DependencyProperty ActionsProperty = DependencyProperty.Register(
         nameof(Actions), typeof(object), typeof(PageHeader), new PropertyMetadata(null));
 
+    public static readonly DependencyProperty IconKindProperty = DependencyProperty.Register(
+        nameof(IconKind), typeof(string), typeof(PageHeader), new PropertyMetadata("Dashboard"));
+    public string IconKind { get => (string)GetValue(IconKindProperty); set => SetValue(IconKindProperty, value); }
+
     public PageHeader() => InitializeComponent();
 
     public string Kicker

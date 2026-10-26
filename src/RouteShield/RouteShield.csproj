@@ -10,7 +10,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>RouteShield</AssemblyName>
     <RootNamespace>RouteShield</RootNamespace>
-    <Version>1.7.1</Version>
+    <Version>1.7.2</Version>
     <Company>RouteShield</Company>
     <Product>RouteShield</Product>
     <Description>Split-tunnel VPN controller for Windows, powered by the sing-box core.</Description>

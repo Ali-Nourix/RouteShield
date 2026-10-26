@@ -86,7 +86,7 @@ public static class SubscriptionParser
 
     /// <summary>Every share-link scheme the profile parser reads; a scheme missing here is dropped from a subscription unseen.</summary>
     private static readonly string[] LinkSchemes =
-        ["vless://", "vmess://", "trojan://", "ss://", "hysteria2://", "hy2://", "tuic://", "anytls://"];
+        ["socks://", "socks5://", "http://", "https://", "vless://", "vmess://", "trojan://", "ss://", "hysteria2://", "hy2://", "tuic://", "anytls://"];
 
     private static bool LooksLikeConfig(string value) =>
         LinkSchemes.Any(scheme => value.StartsWith(scheme, StringComparison.OrdinalIgnoreCase)) ||
