@@ -28,7 +28,7 @@ public sealed class NetworkProbe
         };
 
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(12) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("RouteShield/1.1");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("RouteShield/1.7.2");
 
         var stopwatch = Stopwatch.StartNew();
         var body = (await client.GetStringAsync(ExitAddressService, cancellationToken)).Trim();

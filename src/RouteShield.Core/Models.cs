@@ -98,11 +98,21 @@ public sealed class VpnProfile : Observable
 {
     /// <summary>The format name of a synthesised profile that stands for a whole subscription.</summary>
     public const string AutomaticFormat = "Automatic";
+    public static readonly Guid GlobalAutomaticId = new("29913b27-111d-45f7-9aae-4da16830e251");
+    [JsonIgnore]
+    public bool IsGlobalAutomatic => IsAutomatic && Id == GlobalAutomaticId;
 
     private string _name = "New profile";
     private string _format = "Unknown";
     private string _configText = string.Empty;
     private bool _browserPinned;
+    private bool _isFavorite;
+
+    public bool IsFavorite
+    {
+        get => _isFavorite;
+        set => Set(ref _isFavorite, value);
+    }
 
     public Guid Id { get; set; } = Guid.NewGuid();
 
@@ -299,6 +309,15 @@ public sealed class VpnSubscription : Observable
     [JsonIgnore]
     public bool IsExhausted => Usage is { } usage && (usage.RemainingBytes == 0 || usage.ExpiresAt <= DateTimeOffset.Now);
 
+    [JsonIgnore]
+    public string AttentionText => Usage is not { } usage ? "" :
+        usage.ExpiresAt <= DateTimeOffset.Now ? "Subscription expired" :
+        usage.RemainingBytes == 0 ? "No traffic remaining" :
+        usage.ExpiresAt <= DateTimeOffset.Now.AddDays(3) ? "Expires within 3 days" :
+        usage.TotalBytes is > 0 && usage.RemainingBytes is { } remaining && (double)remaining / usage.TotalBytes <= 0.1 ? "Less than 10% traffic remains" : "";
+    [JsonIgnore]
+    public bool NeedsAttention => AttentionText.Length > 0;
+
     public void ApplyUsage(SubscriptionUsage? usage)
     {
         UploadBytes = usage?.UploadBytes;
@@ -370,8 +389,14 @@ public sealed class VpnSubscription : Observable
     [JsonIgnore]
     public bool HasError => !string.IsNullOrWhiteSpace(LastError);
 
+    /// <summary>Refresh age/expiry labels when time passes without a new provider response.</summary>
+    public void RefreshTimeSensitiveState()
+    {
+        foreach (var property in DerivedProperties) Raise(property);
+    }
+
     private static readonly string[] DerivedProperties =
-        [nameof(StatusText), nameof(StatusDetails), nameof(HasError), nameof(UsageText), nameof(Usage), nameof(IsExhausted)];
+        [nameof(StatusText), nameof(StatusDetails), nameof(HasError), nameof(UsageText), nameof(Usage), nameof(IsExhausted), nameof(AttentionText), nameof(NeedsAttention)];
 
     protected override void OnPropertyChanged(string? propertyName)
     {
@@ -395,7 +420,7 @@ public sealed class VpnSubscription : Observable
 
 public sealed class AppSettings
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -420,6 +445,15 @@ public sealed class AppSettings
     public bool AllowLan { get; set; }
 
     public bool StartWithWindows { get; set; }
+
+    public bool RefreshSubscriptionsOnStartup { get; set; }
+
+    /// <summary>0 disables scheduled refresh; otherwise 15–1440 minutes.</summary>
+    public int SubscriptionRefreshMinutes { get; set; }
+
+    public List<string> DirectDomains { get; set; } = [];
+    public List<string> ProxyDomains { get; set; } = [];
+    public List<string> BlockedDomains { get; set; } = [];
 
     public bool AutoConnect { get; set; }
 

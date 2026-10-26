@@ -34,6 +34,14 @@ public static class TunnelParser
             return ParseWireGuard(text);
         }
 
+        if (text.StartsWith("socks://", StringComparison.OrdinalIgnoreCase) ||
+            text.StartsWith("socks5://", StringComparison.OrdinalIgnoreCase) ||
+            text.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            text.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return ParseProxyLink(text);
+        }
+
         if (text.StartsWith("vless://", StringComparison.OrdinalIgnoreCase))
         {
             return ParseVless(text);
@@ -77,6 +85,31 @@ public static class TunnelParser
 
         throw new NotSupportedException(
             "Unknown format. Paste a VLESS, VMess, Trojan, Shadowsocks, Hysteria2, TUIC or AnyTLS link, a WireGuard .conf, or sing-box JSON.");
+    }
+
+    private static ParsedTunnel ParseProxyLink(string text)
+    {
+        if (!Uri.TryCreate(text, UriKind.Absolute, out var uri) || string.IsNullOrWhiteSpace(uri.Host)
+            || (uri.AbsolutePath != "" && uri.AbsolutePath != "/") || !string.IsNullOrEmpty(uri.Query))
+            throw new FormatException("A proxy link needs a host and optional port, without a path or query.");
+        if (uri.Port == 0) throw new FormatException("A proxy port must be between 1 and 65535.");
+        var socks = uri.Scheme is "socks" or "socks5";
+        var port = uri.Port > 0 ? uri.Port : socks ? 1080 : uri.Scheme == "https" ? 443 : 80;
+        var node = new JsonObject
+        {
+            ["type"] = socks ? "socks" : "http", ["tag"] = ProxyTag,
+            ["server"] = uri.IdnHost.Trim('[', ']'), ["server_port"] = port
+        };
+        if (socks) node["version"] = "5";
+        if (uri.UserInfo.Length > 0)
+        {
+            var credentials = uri.UserInfo.Split(':', 2);
+            node["username"] = Uri.UnescapeDataString(credentials[0]);
+            node["password"] = credentials.Length > 1 ? Uri.UnescapeDataString(credentials[1]) : "";
+        }
+        if (uri.Scheme == "https") node["tls"] = new JsonObject { ["enabled"] = true, ["server_name"] = uri.IdnHost };
+        var name = uri.Fragment.Length > 1 ? Uri.UnescapeDataString(uri.Fragment[1..]) : uri.Host;
+        return FromOutbound(socks ? "SOCKS5" : uri.Scheme == "https" ? "HTTPS proxy" : "HTTP proxy", name, node);
     }
 
     public static string DetectFormat(string input)

@@ -15,6 +15,7 @@
 
                 <StackPanel VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="★" Margin="0,0,6,0" Visibility="{Binding Profile.IsFavorite, Converter={StaticResource Show}}" />
                         <TextBlock TextTrimming="CharacterEllipsis" Text="{Binding Profile.Name}">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource RowLabel}">
@@ -54,7 +55,7 @@
                                 <Setter Property="Foreground" Value="{DynamicResource Neutral600Brush}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding LatencyState}" Value="Measured">
-                                        <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding LatencyState}" Value="Testing">
                                         <Setter Property="Foreground" Value="{DynamicResource Neutral500Brush}" />
@@ -89,6 +90,8 @@
                                                 <Run Text="{Binding ItemCount, Mode=OneWay}" /><Run Text=" entries" />
                                             </TextBlock>
                                         </StackPanel>
+                                        <TextBlock Text="{Binding Name.Subscription.AttentionText}" Foreground="{DynamicResource WarningBrush}"
+                                                   Visibility="{Binding Name.Subscription.NeedsAttention, Converter={StaticResource Show}}" Margin="0,4,0,0" TextWrapping="Wrap" />
                                         <TextBlock Margin="0,3,0,0" TextTrimming="CharacterEllipsis"
                                                    Text="{Binding Name.Subscription.StatusText}"
                                                    ToolTip="{Binding Name.Subscription.StatusDetails}"
@@ -107,10 +110,10 @@
 
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom"
                                                 Visibility="{Binding Name.IsSubscription, Converter={StaticResource Show}}">
-                                        <Button Style="{StaticResource GhostButton}" Content="Refresh"
+                                        <Button Tag="Refresh" Style="{StaticResource GhostButton}" Content="Refresh"
                                                 Command="{Binding DataContext.RefreshSubscriptionCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding Name.Subscription}" />
-                                        <Button Style="{StaticResource GhostButton}" Content="Edit"
+                                        <Button Tag="Tools" Style="{StaticResource GhostButton}" Content="Edit"
                                                 Command="{Binding DataContext.EditSubscriptionCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding Name.Subscription}" />
                                     </StackPanel>
@@ -159,22 +162,65 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <views:PageHeader Kicker="LIBRARY" Title="Profiles &amp; subscriptions">
+        <views:PageHeader IconKind="Library" Kicker="LIBRARY" Title="Profiles &amp; subscriptions">
             <views:PageHeader.Actions>
-                <StackPanel Orientation="Horizontal">
+                <WrapPanel>
                     <Button Style="{StaticResource EditorToggle}" Command="{Binding ToggleEditorCommand}" />
-                    <Button Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"
+                    <Button Tag="Link" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"
                             Command="{Binding AddSubscriptionCommand}" Content="Add subscription" />
-                    <Button Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"
+                    <Button Tag="Download" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"
                             Command="{Binding ImportProfileCommand}" Content="Import file" />
-                    <Button Style="{StaticResource PrimaryButton}" Margin="8,0,0,0"
+                    <Button Tag="Plus" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0"
                             Command="{Binding NewProfileCommand}" Content="New profile" />
-                </StackPanel>
+                </WrapPanel>
             </views:PageHeader.Actions>
         </views:PageHeader>
+
+        <Border Grid.Row="2" Margin="0,12,0,8" Padding="16" Background="{DynamicResource SurfaceBrush}" CornerRadius="10">
+        <StackPanel>
+            <WrapPanel>
+                <TextBox Width="220" Margin="0,0,8,8" Style="{StaticResource AppTextBox}" Tag="Search name or protocol"
+                         Text="{Binding LibraryQuery, UpdateSourceTrigger=PropertyChanged}" />
+                <ComboBox Width="135" Margin="0,0,8,8" Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboItem}"
+                          ItemsSource="{Binding ProtocolOptions}" SelectedItem="{Binding ProtocolFilter}" ToolTip="Filter protocol" />
+                <ComboBox Width="105" Margin="0,0,8,8" Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboItem}"
+                          ItemsSource="{Binding CountryOptions}" SelectedItem="{Binding CountryFilter}" ToolTip="Claimed country from the name's flag only; not measured geolocation" />
+                <CheckBox Content="Favorites" Style="{StaticResource AppCheckBox}" IsChecked="{Binding FavoritesOnly}" Margin="0,0,12,8" />
+                <CheckBox Content="Working only" Style="{StaticResource AppCheckBox}" IsChecked="{Binding WorkingOnly}" Margin="0,0,12,8" />
+                <Button Tag="Close" Content="Clear filters" Style="{StaticResource GhostButton}" Command="{Binding ResetLibraryFiltersCommand}" Margin="0,0,8,8" />
+            </WrapPanel>
+            <WrapPanel>
+                <Button Tag="Connect" Content="Quick connect" Style="{StaticResource PrimaryButton}" Command="{Binding QuickConnectCommand}" Margin="0,0,8,6"
+                        ToolTip="Test matching saved profiles and connect only to the fastest successful HTTPS result (Ctrl+Shift+K)" />
+                <Button Tag="Clipboard" Content="Paste configs" Style="{StaticResource SecondaryButton}" Command="{Binding ImportClipboardCommand}" Margin="0,0,8,6" ToolTip="Import share links or Base64 text (Ctrl+Shift+V)" />
+            </WrapPanel>
+            <Expander Margin="0,6,0,8" Foreground="{DynamicResource TextBrush}">
+                <Expander.Header>
+                    <Border MinHeight="44" Background="Transparent" Padding="4,8">
+                    <StackPanel Orientation="Horizontal">
+                        <ui:Icon Kind="Tools" Margin="0,0,8,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Selected node &amp; library tools" Style="{StaticResource RowLabel}" />
+                    </StackPanel>
+                    </Border>
+                </Expander.Header>
+                <WrapPanel Margin="0,12,0,0">
+                <Button Tag="Activity" Content="Test selected" Style="{StaticResource SecondaryButton}" Command="{Binding TestSelectedCommand}" Margin="0,0,8,6" />
+                <Button Tag="Copy" Content="Copy selected" Style="{StaticResource SecondaryButton}" Command="{Binding CopyProfileCommand}" Margin="0,0,8,6" />
+                <Button Tag="Upload" Content="Export selected" Style="{StaticResource SecondaryButton}" Command="{Binding ExportProfileCommand}" Margin="0,0,8,6" />
+                <Button Tag="Filter" Content="Deduplicate" Style="{StaticResource SecondaryButton}" Command="{Binding RemoveDuplicatesCommand}" Margin="0,0,8,6" />
+                <CheckBox Content="Favorite selected" Style="{StaticResource AppCheckBox}" IsEnabled="{Binding CanEditSelectedProfile}"
+                          IsChecked="{Binding SelectedProfileFavorite}" Margin="0,0,8,6" />
+                </WrapPanel>
+            </Expander>
+            <TextBlock Text="{Binding FilterSummary}" Style="{StaticResource Caption}" />
+            <TextBlock Text="No entries match. Clear filters to see all nodes; Quick connect never substitutes a nonmatching node."
+                       TextWrapping="Wrap" Visibility="{Binding NoFilterMatches, Converter={StaticResource Show}}" Style="{StaticResource HelpText}" Margin="0,6,0,0" />
+        </StackPanel>
+        </Border>
 
         <!-- ══ Toolbar ══ -->
         <Grid Grid.Row="1" Margin="0,18,0,0">
@@ -184,15 +230,15 @@
                 <ColumnDefinition Style="{StaticResource EditorColumn}" />
             </Grid.ColumnDefinitions>
 
-            <Grid>
-                <StackPanel Orientation="Horizontal">
-                    <Button Style="{StaticResource SecondaryButton}" Content="Free &amp; connect" Margin="0,0,8,0"
+            <StackPanel>
+                <WrapPanel>
+                    <Button Tag="Globe" Style="{StaticResource SecondaryButton}" Content="Free &amp; connect" Margin="0,0,8,0"
                             Command="{Binding FreeConnectCommand}"
                             ToolTip="Opt-in public GitHub configurations: test HTTPS latency and connect to the fastest working candidate" />
-                    <Button Style="{StaticResource SecondaryButton}" Content="Test latency"
+                    <Button Tag="Activity" Style="{StaticResource SecondaryButton}" Content="Test latency"
                             Command="{Binding TestLatencyCommand}"
                             Visibility="{Binding IsTestingLatency, Converter={StaticResource Hide}}" />
-                    <Button Style="{StaticResource SecondaryButton}" Content="Stop testing"
+                    <Button Tag="Close" Style="{StaticResource SecondaryButton}" Content="Stop testing"
                             Command="{Binding CancelLatencyCommand}"
                             Visibility="{Binding IsTestingLatency, Converter={StaticResource Show}}" />
 
@@ -205,11 +251,10 @@
                                          IsChecked="{Binding SortByLatency, Mode=TwoWay}" />
                         </StackPanel>
                     </Border>
-                </StackPanel>
-
-                <TextBlock Style="{StaticResource Caption}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                </WrapPanel>
+                <TextBlock Style="{StaticResource Caption}" HorizontalAlignment="Left" Margin="0,8,0,0"
                            Text="{Binding LibrarySummary}" />
-            </Grid>
+            </StackPanel>
 
             <Border Grid.Column="2" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,2"
                     Padding="0,0,0,9" VerticalAlignment="Bottom"
@@ -231,7 +276,7 @@
             </Border>
         </Grid>
 
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="3">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Style="{StaticResource EditorGap}" />
@@ -244,16 +289,17 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
+                <ScrollViewer MaxHeight="160" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <ItemsControl ItemsSource="{Binding EmptySubscriptions}" Margin="0,12,0,0">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Border BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1" Padding="0,8">
                                 <DockPanel>
                                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                                        <Button Style="{StaticResource GhostButton}" Content="Refresh"
+                                        <Button Tag="Refresh" Style="{StaticResource GhostButton}" Content="Refresh"
                                                 Command="{Binding DataContext.RefreshSubscriptionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}" />
-                                        <Button Style="{StaticResource GhostButton}" Content="Edit"
+                                        <Button Tag="Tools" Style="{StaticResource GhostButton}" Content="Edit"
                                                 Command="{Binding DataContext.EditSubscriptionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}" />
                                     </StackPanel>
@@ -267,6 +313,7 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                </ScrollViewer>
                 <TextBlock Grid.Row="1" Style="{StaticResource HelpText}" Margin="0,22,0,0" VerticalAlignment="Top"
                            Text="Nothing here yet. Add a subscription, import a file, or open the editor and paste a share link."
                            Visibility="{Binding Profiles.Count, Converter={StaticResource ShowIfEmpty}}" />
@@ -310,9 +357,9 @@
                                    MaxWidth="360" HorizontalAlignment="Left"
                                    Text="Saved secrets are encrypted with Windows DPAPI and never leave this machine." />
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button Style="{StaticResource SecondaryButton}" Command="{Binding DeleteProfileCommand}"
+                            <Button Tag="Trash" Style="{StaticResource SecondaryButton}" Command="{Binding DeleteProfileCommand}"
                                     Content="Delete" />
-                            <Button Style="{StaticResource PrimaryButton}" Margin="8,0,0,0"
+                            <Button Tag="Check" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0"
                                     Command="{Binding SaveProfileCommand}" Content="Save profile" />
                         </StackPanel>
                     </Grid>

@@ -130,7 +130,7 @@ public static partial class AppLog
     [GeneratedRegex("""(["']?\b(?:private[_-]?key|pre[_-]?shared[_-]?key|public[_-]?key|password|uuid|(?:access[_-]?|refresh[_-]?|api[_-]?)?token|(?:client[_-]?)?secret|api[_-]?key|auth)\b["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^,;"'\s}]+)""", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)]
     private static partial Regex SecretFieldPattern();
 
-    [GeneratedRegex(@"\b(vless|vmess|trojan|ss|ssr|hysteria2?|hy2|tuic|anytls)://\S+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)]
+    [GeneratedRegex(@"\b(vless|vmess|trojan|ss|ssr|hysteria2?|hy2|tuic|anytls|socks5?)://\S+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)]
     private static partial Regex ShareLinkPattern();
 
     [GeneratedRegex("""(["']?\b(?:proxy[_-]?)?authorization\b["']?\s*[:=]\s*)[^\r\n,;}]+""", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)]

@@ -67,6 +67,11 @@ public sealed class SettingsStore
             return new AppSettings();
         }
 
+        settings.DirectDomains ??= [];
+        settings.ProxyDomains ??= [];
+        settings.BlockedDomains ??= [];
+        if (settings.SubscriptionRefreshMinutes != 0)
+            settings.SubscriptionRefreshMinutes = Math.Clamp(settings.SubscriptionRefreshMinutes, 15, 1440);
         Unseal(settings);
         return settings;
     }

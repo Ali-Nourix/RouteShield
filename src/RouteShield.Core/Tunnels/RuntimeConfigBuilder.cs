@@ -484,6 +484,22 @@ public static class RuntimeConfigBuilder
 
     private static void AddPolicyRules(JsonArray rules, AppSettings settings, string[] executables)
     {
+        // Explicit user policy takes precedence over LAN/domestic/app defaults, not pinned browser routes.
+        var blocked = DomainPolicy.Parse(string.Join('\n', settings.BlockedDomains));
+        var proxied = DomainPolicy.Parse(string.Join('\n', settings.ProxyDomains));
+        var direct = DomainPolicy.Parse(string.Join('\n', settings.DirectDomains));
+        if (blocked.Count > 0) rules.Add(new JsonObject
+        {
+            ["domain_suffix"] = TunnelParser.ToJsonArray(blocked), ["action"] = "reject", ["method"] = "default"
+        });
+        if (proxied.Count > 0) rules.Add(new JsonObject
+        {
+            ["domain_suffix"] = TunnelParser.ToJsonArray(proxied), ["action"] = "route", ["outbound"] = ProxyTag
+        });
+        if (direct.Count > 0) rules.Add(new JsonObject
+        {
+            ["domain_suffix"] = TunnelParser.ToJsonArray(direct), ["action"] = "route", ["outbound"] = DirectTag
+        });
         if (settings.AllowLan)
         {
             // IP rules never match a destination that is still a name, so this only catches

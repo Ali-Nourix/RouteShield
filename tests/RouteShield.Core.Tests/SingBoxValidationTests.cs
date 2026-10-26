@@ -264,6 +264,29 @@ public class SingBoxValidationTests
         }
     }
 
+    [SkippableTheory]
+    [InlineData("socks5://user:pw@relay.example.net:1080#Socks")]
+    [InlineData("http://user:pw@relay.example.net:8080#HTTP")]
+    [InlineData("https://user:pw@relay.example.net:443#HTTPS")]
+    public void New_proxy_protocols_and_custom_domain_policy_are_accepted_by_real_core(string link)
+    {
+        var core = CorePath;
+        Skip.If(core is null, "Set ROUTESHIELD_SINGBOX for engine validation.");
+        var settings = Fixtures.Settings(RouteMode.FullTunnel);
+        settings.DirectDomains = ["direct.example.com"];
+        settings.ProxyDomains = ["proxy.example.com"];
+        settings.BlockedDomains = ["blocked.example.com"];
+        var runtime = RuntimeConfigBuilder.Build(TunnelParser.Parse(link), settings, Fixtures.Apps);
+        var path = Path.Combine(Path.GetTempPath(), $"routeshield-new-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(path, runtime.Json);
+            var (code, output) = Run(core!, "check", "-c", path);
+            Assert.True(code == 0, $"Core rejected new capabilities: {output}");
+        }
+        finally { File.Delete(path); }
+    }
+
     private static (int ExitCode, string Output) Run(string fileName, params string[] arguments)
     {
         var startInfo = new ProcessStartInfo(fileName)

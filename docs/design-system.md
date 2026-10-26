@@ -120,3 +120,23 @@ These tokens work with both existing palettes and preserve the Modernist visual 
 
 Native WPF visual acceptance still requires Windows at 100%, 125%, 150% and 200% scaling;
 HTML brand previews are not screenshots of the running desktop application.
+
+## 1.7.2 refinement: original outline icons and calmer hierarchy
+
+`Ui/Icon.cs` provides a small original 24-unit vector symbol set, drawn at a consistent 1.8-unit
+stroke and inheriting the active foreground. No icon font, emoji dependency, upstream logo or
+third-party icon asset is required. Navigation now uses meaningful dashboard/library/apps/shield/
+activity symbols instead of ordinal numbers. Important buttons pair an icon with their existing
+text; they are not replaced by unlabeled icon-only controls.
+
+Page headings and actions occupy separate rows so narrow desktop windows do not force a title
+and four actions into the same line. Profiles groups filters/primary actions on a subtle surface;
+secondary tools are progressively disclosed. Empty provider cards have their own bounded scroll
+area. Minimum primary button/input/nav targets are 44px and button keyboard focus has an explicit
+outline. Password controls follow the active palette.
+
+The light primary accent is deepened to `#C62F1B` to improve label contrast; the established warm
+RouteShield identity is retained, not replaced by a competitor's visual branding. Successful
+measurements/live marks use a separate success brush, account warnings a warning brush, and password
+errors a danger brush. Status remains textual as well as colored. Layout references are design aids,
+not native Windows captures; native DPI/input/accessibility QA remains required before release.

@@ -13,6 +13,13 @@
         FontFamily="{StaticResource BodyFont}"
         UseLayoutRounding="True">
 
+    <Window.InputBindings>
+        <KeyBinding Key="V" Modifiers="Control+Shift" Command="{Binding ImportClipboardCommand}" />
+        <KeyBinding Key="T" Modifiers="Control+Shift" Command="{Binding TestSelectedCommand}" />
+        <KeyBinding Key="K" Modifiers="Control+Shift" Command="{Binding QuickConnectCommand}" />
+        <KeyBinding Key="L" Modifiers="Control+Shift" Command="{Binding NavigateCommand}" CommandParameter="Profiles" />
+    </Window.InputBindings>
+
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="40" CornerRadius="0" GlassFrameThickness="0"
                             ResizeBorderThickness="6" UseAeroCaptionButtons="False" />
@@ -105,15 +112,15 @@
                     </Border>
 
                     <StackPanel VerticalAlignment="Top">
-                        <RadioButton Style="{StaticResource NavItem}" Tag="01" Content="Dashboard"
+                        <RadioButton Style="{StaticResource NavItem}" Tag="Dashboard" Content="Dashboard"
                                      IsChecked="{Binding Page, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=Dashboard}" />
-                        <RadioButton Style="{StaticResource NavItem}" Tag="02" Content="Profiles"
+                        <RadioButton Style="{StaticResource NavItem}" Tag="Library" Content="Profiles"
                                      IsChecked="{Binding Page, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=Profiles}" />
-                        <RadioButton Style="{StaticResource NavItem}" Tag="03" Content="Applications"
+                        <RadioButton Style="{StaticResource NavItem}" Tag="Apps" Content="Applications"
                                      IsChecked="{Binding Page, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=Applications}" />
-                        <RadioButton Style="{StaticResource NavItem}" Tag="04" Content="Security"
+                        <RadioButton Style="{StaticResource NavItem}" Tag="Shield" Content="Security"
                                      IsChecked="{Binding Page, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=Security}" />
-                        <RadioButton Style="{StaticResource NavItem}" Tag="05" Content="Diagnostics"
+                        <RadioButton Style="{StaticResource NavItem}" Tag="Activity" Content="Diagnostics"
                                      IsChecked="{Binding Page, Mode=TwoWay, Converter={StaticResource EnumMatch}, ConverterParameter=Diagnostics}" />
                     </StackPanel>
                 </DockPanel>
@@ -136,7 +143,10 @@
                 <StackPanel>
                     <TextBlock Style="{StaticResource Kicker}" Foreground="{DynamicResource AccentBrush}"
                                ui:Typo.Tracked="WORKING" />
-                    <TextBlock Style="{StaticResource SectionTitle}" Margin="0,10,0,0" Text="{Binding BusyMessage}" />
+                    <TextBlock Style="{StaticResource SectionTitle}" Margin="0,10,0,0" Text="{Binding BusyMessage}" TextWrapping="Wrap" MaxWidth="500" />
+                    <Button Tag="Close" Content="Stop testing" Command="{Binding CancelLatencyCommand}"
+                            Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left" Margin="0,16,0,0"
+                            Visibility="{Binding IsTestingLatency, Converter={StaticResource Show}}" />
                 </StackPanel>
             </Border>
         </Border>

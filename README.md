@@ -77,6 +77,17 @@ Windows routing and the Android preview have different support boundaries. Read 
   core, and the exit address the outside world sees.
 - **Diagnostics** — a filterable event log and an export bundle that never carries a secret.
 
+## Windows 1.7.2 additions
+
+- Search and filter saved nodes by protocol, claimed flag-country, favorites or successful measurements.
+- Paste share links/Base64 bodies, copy/export a selected node, remove same-provider duplicates and test just one node.
+- Quick connect measures matching saved nodes before choosing; an all-saved-profiles automatic group is also available.
+- Opt-in subscription refresh at startup/on a schedule, explicit domain routing lists and password-encrypted library backups.
+- Refined layout, original outline icons and focused-window keyboard shortcuts.
+
+See the [nine-client feature review and limitations](docs/client-feature-review-1.7.2.md) and
+[product version policy](docs/release-policy.md). Android is not changed by this Windows update.
+
 ## Install
 
 Download the latest `RouteShield-<version>-win-x64.zip` from
@@ -105,7 +116,7 @@ Options pass straight through:
 
 ```cmd
 build.cmd -Runtime win-arm64
-build.cmd -Version 1.7.1
+build.cmd -Version 1.7.2
 ```
 
 ## Layout

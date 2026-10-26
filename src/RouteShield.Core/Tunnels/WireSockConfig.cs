@@ -33,6 +33,8 @@ public static class WireSockConfig
     /// </param>
     public static string Build(string conf, AppSettings settings, IEnumerable<AppTarget> apps, string? self)
     {
+        if (settings.DirectDomains.Count > 0 || settings.ProxyDomains.Count > 0 || settings.BlockedDomains.Count > 0)
+            throw new NotSupportedException("Custom domain rules require sing-box. Select the sing-box engine or clear custom domain rules before using WireSock; these rules will not be silently ignored.");
         var lines = conf.Replace("\r\n", "\n").Split('\n');
         if (!lines.Any(line => IsSection(line, "Peer")))
         {

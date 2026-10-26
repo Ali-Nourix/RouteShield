@@ -29,7 +29,7 @@ public static class TargetResolver
         var leftOut = new List<string>();
         var members = new List<(VpnProfile Profile, ParsedTunnel Tunnel)>();
 
-        foreach (var candidate in library.Where(candidate => !candidate.IsAutomatic && candidate.SubscriptionId == profile.SubscriptionId))
+        foreach (var candidate in library.Where(candidate => !candidate.IsAutomatic && (profile.IsGlobalAutomatic || candidate.SubscriptionId == profile.SubscriptionId)))
         {
             ParsedTunnel tunnel;
             try

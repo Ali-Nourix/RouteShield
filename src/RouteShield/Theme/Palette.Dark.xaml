@@ -80,4 +80,8 @@
     <DropShadowEffect x:Key="ShadowLg" BlurRadius="36" ShadowDepth="14" Direction="270"
                       Color="#000000" Opacity="0.55" />
 
+    <SolidColorBrush x:Key="SuccessBrush" Color="#8FD5AF" />
+    <SolidColorBrush x:Key="WarningBrush" Color="#F1C17C" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#FFA093" />
+
 </ResourceDictionary>
