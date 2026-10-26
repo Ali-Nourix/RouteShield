@@ -9,6 +9,16 @@
 
 ## Unreleased
 
+### Windows subscription fixes and opt-in Free mode
+
+- Restrict subscription-window dragging to its title so form controls receive clicks.
+- Persist new subscriptions before fetching and show zero-node/failed subscriptions with retry/edit actions.
+- Keep independent subscriptions isolated, retain matching profile identities/pins, and serialize settings writes.
+- Add opt-in public GitHub share-link discovery, bounded HTTPS latency testing, cancellation and fastest-working-node connection.
+- Keep the tested free pool separate from private subscriptions; no untested fallback on download/probe failure.
+- Add regression tests and a Windows manual validation checklist in `docs/windows-free-mode-qa.md`.
+
+
 ### Android connection and import follow-up
 
 - Add bounded UTF-8 document import for standard WireGuard `.conf` and profile files, with

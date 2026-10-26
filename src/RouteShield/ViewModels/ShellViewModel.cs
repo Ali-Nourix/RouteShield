@@ -70,6 +70,7 @@ public sealed class ShellViewModel : Observable
     private string _busyMessage = string.Empty;
     private bool _sortByLatency;
     private bool _isTestingLatency;
+    private bool _isFreeSearching;
     private bool _isEditorOpen;
 
     public ShellViewModel(IUiHost host)
@@ -92,6 +93,8 @@ public sealed class ShellViewModel : Observable
         RefreshAdaptersCommand = new RelayCommand(RefreshAdapters);
 
         AddSubscriptionCommand = new AsyncRelayCommand(AddSubscriptionAsync);
+        FreeConnectCommand = new AsyncRelayCommand(FreeConnectAsync,
+            () => !IsTestingLatency && State is TunnelState.Disconnected or TunnelState.Failed);
         EditSubscriptionCommand = new AsyncRelayCommand(EditSubscriptionAsync);
         RefreshSubscriptionCommand = new AsyncRelayCommand(RefreshOneSubscriptionAsync);
         RefreshSubscriptionsCommand = new AsyncRelayCommand(RefreshSubscriptionsAsync);
@@ -148,6 +151,8 @@ public sealed class ShellViewModel : Observable
 
     public ObservableCollection<VpnSubscription> Subscriptions { get; } = [];
 
+    public ObservableCollection<VpnSubscription> EmptySubscriptions { get; } = [];
+
     public ObservableCollection<AppTarget> Apps { get; } = [];
 
     public ObservableCollection<ProfileItem> Library { get; } = [];
@@ -190,7 +195,7 @@ public sealed class ShellViewModel : Observable
 
     public bool IsKillSwitchHolding => _tunnel.KillSwitchArmed && State != TunnelState.Connected;
 
-    public bool CanConnect => SelectedProfile is not null && State is TunnelState.Disconnected or TunnelState.Failed;
+    public bool CanConnect => !_isFreeSearching && SelectedProfile is not null && State is TunnelState.Disconnected or TunnelState.Failed;
 
     public string UptimeText => _tunnel.ConnectedAt is { } start
         ? (DateTimeOffset.Now - start).ToString(@"hh\:mm\:ss")
@@ -603,6 +608,7 @@ public sealed class ShellViewModel : Observable
             Raise(nameof(HasSelectedProfile));
             Raise(nameof(CanEditSelectedProfile));
             ConnectCommand.RaiseCanExecuteChanged();
+            FreeConnectCommand.RaiseCanExecuteChanged();
             ValidateCommand.RaiseCanExecuteChanged();
             SaveProfileCommand.RaiseCanExecuteChanged();
             DeleteProfileCommand.RaiseCanExecuteChanged();
@@ -667,6 +673,7 @@ public sealed class ShellViewModel : Observable
             if (Set(ref _isTestingLatency, value))
             {
                 TestLatencyCommand.RaiseCanExecuteChanged();
+                FreeConnectCommand.RaiseCanExecuteChanged();
                 CancelLatencyCommand.RaiseCanExecuteChanged();
             }
         }
@@ -778,6 +785,8 @@ public sealed class ShellViewModel : Observable
     public RelayCommand RefreshAdaptersCommand { get; }
 
     public AsyncRelayCommand AddSubscriptionCommand { get; }
+
+    public AsyncRelayCommand FreeConnectCommand { get; }
 
     public AsyncRelayCommand EditSubscriptionCommand { get; }
 
@@ -1077,6 +1086,132 @@ public sealed class ShellViewModel : Observable
 
     // ══ Subscription actions ══
 
+    private async Task FreeConnectAsync()
+    {
+        if (!IsAdministrator || !CoreProcessService.IsCoreInstalled)
+        {
+            await _host.AlertAsync("Free mode", "Administrator access and sing-box are required",
+                "Run the packaged Windows app as administrator. No configurations have been downloaded.");
+            return;
+        }
+        if (!await _host.ConfirmAsync("Public servers", "Use free community servers?",
+            "These servers are operated by unknown third parties. They can see your IP and connection metadata; " +
+            "unencrypted traffic can be read or changed. Do not use them for sensitive activity. " +
+            "RouteShield will download public GitHub share links, test HTTPS through up to 100 candidates, " +
+            "and connect to the lowest measured latency. Availability and privacy are not guaranteed.", "Test and connect")) return;
+
+        using var run = new CancellationTokenSource(TimeSpan.FromMinutes(4));
+        _isFreeSearching = true;
+        Raise(nameof(CanConnect));
+        ConnectCommand.RaiseCanExecuteChanged();
+        _latencyRun = run;
+        IsTestingLatency = true;
+        var delays = new System.Collections.Concurrent.ConcurrentDictionary<Guid, int>();
+        try
+        {
+            BusyMessage = "Free mode: downloading public configurations";
+            var batch = await new FreeConfigService(_subscriptions).FetchAsync(_tunnel.ProxyUri, run.Token);
+            if (batch.Nodes.Count == 0)
+            {
+                await _host.AlertAsync("Free mode", "No usable public configurations were downloaded",
+                    "GitHub may be blocked or the feeds may be unavailable. Existing subscriptions are unchanged. " +
+                    string.Join("; ", batch.SourceErrors));
+                return;
+            }
+            var candidates = batch.Nodes.Select(node => new VpnProfile
+            {
+                Name = node.Name, Format = node.Format, ConfigText = node.Config,
+                SubscriptionId = FreeConfigService.PoolId
+            }).ToList();
+            BusyMessage = $"Free mode: testing {candidates.Count} configurations (Stop testing cancels)";
+            foreach (var group in candidates.Chunk(20))
+            {
+                await ProbeFreeBatchAsync(group, delays, run.Token);
+            }
+            run.Token.ThrowIfCancellationRequested();
+            var fastest = FreeConfigService.Fastest(delays.Select(pair => (pair.Key, (int?)pair.Value)));
+            if (fastest is null)
+            {
+                await _host.AlertAsync("Free mode", "No public server passed the HTTPS test",
+                    "No connection was started and your existing subscriptions were not changed. Try again later.");
+                return;
+            }
+
+            var pool = Subscriptions.FirstOrDefault(sub => sub.Id == FreeConfigService.PoolId);
+            if (pool is null)
+            {
+                pool = new VpnSubscription { Id = FreeConfigService.PoolId, Name = "Free community servers", Url = FreeConfigService.Sources[0] };
+                Subscriptions.Add(pool);
+            }
+            var working = candidates.Where(candidate => delays.ContainsKey(candidate.Id)).ToList();
+            // Only replace the free pool; private subscriptions, selection and pins stay intact.
+            foreach (var old in Profiles.Where(profile => profile.SubscriptionId == pool.Id).ToList()) Profiles.Remove(old);
+            foreach (var profile in working)
+            {
+                Profiles.Add(profile);
+                _latencyMemory[profile.Id] = (LatencyState.Measured, delays[profile.Id], null);
+            }
+            pool.LastCount = working.Count;
+            pool.LastUpdated = DateTimeOffset.Now;
+            pool.LastError = string.Empty;
+            RebuildLibrary();
+            SelectedProfile = working.First(profile => profile.Id == fastest.Value);
+            SortByLatency = true;
+            await SaveAsync();
+            run.Token.ThrowIfCancellationRequested();
+            // Selection can change while the settings write yields to the UI.
+            SelectedProfile = working.First(profile => profile.Id == fastest.Value);
+            // Release the shared probe before starting the actual tunnel.
+            _isFreeSearching = false;
+            Raise(nameof(CanConnect));
+            ConnectCommand.RaiseCanExecuteChanged();
+            IsTestingLatency = false;
+            _latencyRun = null;
+            await ConnectAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            await _host.AlertAsync("Free mode", "Free server search stopped",
+                "The search was cancelled or reached its four-minute limit. No untested server was connected.");
+        }
+        catch (Exception exception) when (IsExpected(exception) || exception is HttpRequestException)
+        {
+            await _host.AlertAsync("Free mode", "Free server search failed", exception.Message);
+        }
+        finally
+        {
+            if (ReferenceEquals(_latencyRun, run)) _latencyRun = null;
+            _isFreeSearching = false;
+            Raise(nameof(CanConnect));
+            ConnectCommand.RaiseCanExecuteChanged();
+            IsTestingLatency = false;
+            BusyMessage = string.Empty;
+        }
+    }
+
+    private async Task ProbeFreeBatchAsync(IReadOnlyList<VpnProfile> profiles,
+        System.Collections.Concurrent.ConcurrentDictionary<Guid, int> delays, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            var parsed = profiles.Select(profile => (profile.Id, TunnelParser.Parse(profile.ConfigText))).ToList();
+            await _latency.RunAsync(parsed, result =>
+            {
+                if (result.DelayMilliseconds is >= 0 && result.Failure is null)
+                    delays[result.ProfileId] = result.DelayMilliseconds.Value;
+            }, cancellationToken);
+        }
+        catch (Exception exception) when (IsExpected(exception) || exception is HttpRequestException)
+        {
+            // One unsupported node must not poison an entire public feed's probe core.
+            if (profiles.Count <= 1) return;
+            var midpoint = profiles.Count / 2;
+            await ProbeFreeBatchAsync(profiles.Take(midpoint).ToArray(), delays, cancellationToken);
+            await ProbeFreeBatchAsync(profiles.Skip(midpoint).ToArray(), delays, cancellationToken);
+        }
+    }
+
     private async Task AddSubscriptionAsync()
     {
         if (_host.EditSubscription(null) is not { Remove: false } edit)
@@ -1084,26 +1219,38 @@ public sealed class ShellViewModel : Observable
             return;
         }
 
-        var subscription = Subscriptions.FirstOrDefault(item => string.Equals(item.Url, edit.Url, StringComparison.Ordinal))
-                           ?? new VpnSubscription();
-
-        if (!Subscriptions.Contains(subscription))
-        {
-            Subscriptions.Add(subscription);
-        }
-
-        subscription.Name = edit.Name;
-        subscription.Url = edit.Url;
-
-        await RefreshSubscriptionAsync(subscription);
+        var subscription = SubscriptionLibrary.Upsert(Subscriptions, edit.Name, edit.Url);
         RebuildLibrary();
-        await SaveAsync();
+        await SaveAsync(); // Keep the URL even if downloading is blocked or the app is closed.
+        BusyMessage = $"Refreshing {subscription.Name}";
+        try
+        {
+            await RefreshSubscriptionAsync(subscription);
+            RebuildLibrary();
+            await SaveAsync();
+            if (subscription.HasError)
+            {
+                await _host.AlertAsync("Subscription saved", "The subscription could not be refreshed",
+                    subscription.LastError + "\nThe subscription is saved. Use Refresh to retry or Edit to correct its URL.");
+            }
+        }
+        finally
+        {
+            BusyMessage = string.Empty;
+        }
     }
 
     private async Task EditSubscriptionAsync(object? parameter)
     {
         if (parameter is not VpnSubscription subscription || _host.EditSubscription(subscription) is not { } edit)
         {
+            return;
+        }
+
+        if (subscription.Id == FreeConfigService.PoolId && !edit.Remove)
+        {
+            await _host.AlertAsync("Free mode", "This pool uses fixed public GitHub feeds",
+                "Use Free & connect while disconnected to update it, or Edit then Remove subscription to delete it.");
             return;
         }
 
@@ -1155,6 +1302,12 @@ public sealed class ShellViewModel : Observable
 
     private async Task RefreshOneSubscriptionAsync(object? parameter)
     {
+        if (parameter is VpnSubscription pool && pool.Id == FreeConfigService.PoolId)
+        {
+            if (FreeConnectCommand.CanExecute(null)) await FreeConnectAsync();
+            else await _host.AlertAsync("Free mode", "Disconnect before refreshing the free pool", "Wait for any latency test to finish, then use Free & connect.");
+            return;
+        }
         if (parameter is not VpnSubscription subscription)
         {
             return;
@@ -1199,6 +1352,11 @@ public sealed class ShellViewModel : Observable
 
     private async Task RefreshSubscriptionAsync(VpnSubscription subscription)
     {
+        if (subscription.Id == FreeConfigService.PoolId)
+        {
+            // Do not replace tested nodes with an untested feed during Refresh all.
+            return;
+        }
         try
         {
             // The address a subscription lives at is often blocked by the network the tunnel is
@@ -1254,32 +1412,14 @@ public sealed class ShellViewModel : Observable
     private int ReplaceSubscriptionProfiles(VpnSubscription subscription, IReadOnlyList<ImportedNode> nodes)
     {
         var selectedName = SelectedProfile?.Name;
-        var owned = Profiles.Where(profile => profile.SubscriptionId == subscription.Id).ToList();
-        var pinnedNames = owned.Where(profile => profile.BrowserPinned).Select(profile => profile.Name).ToHashSet();
-
-        foreach (var profile in owned)
-        {
-            Profiles.Remove(profile);
-        }
-
-        foreach (var node in nodes)
-        {
-            Profiles.Add(new VpnProfile
-            {
-                Name = node.Name,
-                Format = node.Format,
-                ConfigText = node.Config,
-                SubscriptionId = subscription.Id,
-                BrowserPinned = pinnedNames.Contains(node.Name)
-            });
-        }
+        var count = SubscriptionLibrary.ReplaceProfiles(Profiles, subscription.Id, nodes);
 
         if (SelectedProfile is null || !IsSelectable(SelectedProfile))
         {
             SelectedProfile = Profiles.FirstOrDefault(profile => profile.Name == selectedName) ?? Profiles.FirstOrDefault();
         }
 
-        return nodes.Count;
+        return count;
     }
 
     /// <summary>
@@ -1382,6 +1522,12 @@ public sealed class ShellViewModel : Observable
             _latencyMemory[item.Profile.Id] = item.Snapshot();
         }
 
+        EmptySubscriptions.Clear();
+        foreach (var subscription in Subscriptions.Where(sub => !Profiles.Any(profile => profile.SubscriptionId == sub.Id)))
+        {
+            EmptySubscriptions.Add(subscription);
+        }
+
         _rebuildingLibrary = true;
         try
         {
@@ -1449,6 +1595,7 @@ public sealed class ShellViewModel : Observable
         Raise(nameof(StateWord));
         Raise(nameof(StatusDetail));
         TestLatencyCommand.RaiseCanExecuteChanged();
+        FreeConnectCommand.RaiseCanExecuteChanged();
     }
 
     private LibrarySection SectionFor(VpnProfile profile)
@@ -1717,6 +1864,7 @@ public sealed class ShellViewModel : Observable
             }
 
             ConnectCommand.RaiseCanExecuteChanged();
+            FreeConnectCommand.RaiseCanExecuteChanged();
         });
     }
 

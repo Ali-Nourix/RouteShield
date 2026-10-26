@@ -7,6 +7,7 @@ namespace RouteShield;
 /// <summary>Reads and writes settings.json, sealing every secret on the way out and unsealing it on the way in.</summary>
 public sealed class SettingsStore
 {
+    private readonly SemaphoreSlim _saveGate = new(1, 1);
     private static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
@@ -71,6 +72,19 @@ public sealed class SettingsStore
     }
 
     public async Task SaveAsync(AppSettings settings)
+    {
+        await _saveGate.WaitAsync();
+        try
+        {
+            await SaveCoreAsync(settings);
+        }
+        finally
+        {
+            _saveGate.Release();
+        }
+    }
+
+    private static async Task SaveCoreAsync(AppSettings settings)
     {
         AppPaths.Ensure();
 

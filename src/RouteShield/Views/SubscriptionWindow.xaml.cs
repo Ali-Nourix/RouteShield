@@ -29,7 +29,7 @@ public partial class SubscriptionWindow : Window
     private SubscriptionEdit? Result { get; set; }
 
     private static bool IsUsable(string url) =>
-        Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps;
+        Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps && uri.UserInfo.Length == 0;
 
     private void OnUrlChanged(object sender, TextChangedEventArgs args)
     {
@@ -61,7 +61,7 @@ public partial class SubscriptionWindow : Window
 
     private void OnDragWindow(object sender, MouseButtonEventArgs args)
     {
-        if (args.ButtonState == MouseButtonState.Pressed && args.OriginalSource is not TextBox)
+        if (args.ChangedButton == MouseButton.Left && args.ButtonState == MouseButtonState.Pressed)
         {
             DragMove();
         }
